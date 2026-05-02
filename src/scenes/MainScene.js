@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import GoogleElement from '../entities/GoogleElement.js';
 import Player from '../entities/Player.js';
+import Boss from '../entities/Boss.js';
 
 export default class MainScene extends Phaser.Scene {
     constructor() {
@@ -9,10 +10,10 @@ export default class MainScene extends Phaser.Scene {
 
     preload() {
         // Load Stickman sprites
-        this.load.spritesheet('stickman-run', 'assets/sprites/stickman/StickmanPack/Run/Run.png?v=2', { frameWidth: 64, frameHeight: 64 });
-        this.load.spritesheet('stickman-idle', 'assets/sprites/stickman/StickmanPack/Idle/Thin.png?v=2', { frameWidth: 64, frameHeight: 64 });
-        this.load.image('stickman-jump-up', 'assets/sprites/stickman/StickmanPack/Jump/JumpUp.png?v=2');
-        this.load.image('stickman-jump-down', 'assets/sprites/stickman/StickmanPack/Jump/JumpDown.png?v=2');
+        this.load.spritesheet('stickman-run', 'assets/sprites/stickman/StickmanPack/Run/Run.png?v=3', { frameWidth: 64, frameHeight: 64 });
+        this.load.spritesheet('stickman-idle', 'assets/sprites/stickman/StickmanPack/Idle/Thin.png?v=3', { frameWidth: 64, frameHeight: 64 });
+        this.load.image('stickman-jump-up', 'assets/sprites/stickman/StickmanPack/Jump/JumpUp.png?v=3');
+        this.load.image('stickman-jump-down', 'assets/sprites/stickman/StickmanPack/Jump/JumpDown.png?v=3');
 
         // Load SFX
         this.load.audio('impact-light', 'assets/audio/sfx/impact/Audio/impactGeneric_light_000.ogg');
@@ -154,13 +155,18 @@ export default class MainScene extends Phaser.Scene {
             } while ((cx !== startX || cy !== startY) && count < 2000);
             
             const simplified = [];
+            let minX = Infinity, minY = Infinity;
             const step = Math.max(1, Math.floor(path.length / 40));
             const offsetX = canvas.width / 2;
             const offsetY = canvas.height / 2;
             for (let i = 0; i < path.length; i += step) {
-                simplified.push(`${path[i].x - offsetX} ${path[i].y - offsetY}`);
+                const px = path[i].x - offsetX;
+                const py = path[i].y - offsetY;
+                minX = Math.min(minX, px);
+                minY = Math.min(minY, py);
+                simplified.push(`${px} ${py}`);
             }
-            return simplified.join(' ');
+            return { verts: simplified.join(' '), minX, minY };
         };
 
         let startX = centerX - (totalWidth / 2);
@@ -168,8 +174,8 @@ export default class MainScene extends Phaser.Scene {
             const letter = googleLetters[i];
             const dims = letterWidths[i];
             
-            const verts = getTextVertices(letter.char, letter.size, dims.w, dims.h);
-            const shapeConfig = verts ? { type: 'fromVerts', verts: verts } : undefined;
+            const shapeData = getTextVertices(letter.char, letter.size, dims.w, dims.h);
+            const shapeConfig = shapeData && shapeData.verts ? { type: 'fromVerts', verts: shapeData.verts } : undefined;
             
             new GoogleElement(this, startX + dims.w / 2, logoY, dims.w, dims.h, (container, scene) => {
                 const t = scene.add.text(0, 0, letter.char, {
@@ -178,7 +184,12 @@ export default class MainScene extends Phaser.Scene {
                     color: letter.color
                 }).setOrigin(0.5, 0.5);
                 container.add(t);
-            }, { maxHits: 3, shape: shapeConfig });
+            }, { 
+                maxHits: 3, 
+                shape: shapeConfig,
+                origMinX: shapeData ? shapeData.minX : undefined,
+                origMinY: shapeData ? shapeData.minY : undefined
+            });
             
             startX += dims.w;
         }
@@ -362,6 +373,9 @@ export default class MainScene extends Phaser.Scene {
         // ===== STICKMAN =====
         this.player = new Player(this, 100, height - 100);
 
+        // ===== BOSS =====
+        this.boss = new Boss(this, width - 150, 150);
+
         // ===== COLLISION HANDLING =====
         const handleCollision = (event) => {
             event.pairs.forEach(pair => {
@@ -395,6 +409,20 @@ export default class MainScene extends Phaser.Scene {
                         if (speed > 5 && !this.soundImpactHeavy.isPlaying) {
                             this.soundImpactHeavy.play();
                         }
+                        
+                        // Player hit by projectile
+                        if (staticBody.label === 'projectile' || dynamicBody.label === 'projectile') {
+                            console.log('Player hit by projectile!');
+                        }
+                    } else if (staticBody.label === 'bossBody' || dynamicBody.label === 'bossBody') {
+                        // Boss takes damage from fast moving objects (UI elements thrown by P2)
+                        if (dynamicBody.label === 'google-ui' && !dynamicBody.isStatic) {
+                            const speed = Math.hypot(dynamicBody.velocity.x, dynamicBody.velocity.y);
+                            if (speed > 8) {
+                                this.boss.takeHit(25);
+                                this.soundImpactHeavy.play();
+                            }
+                        }
                     }
                 };
 
@@ -407,7 +435,10 @@ export default class MainScene extends Phaser.Scene {
         this.matter.world.on('collisionactive', handleCollision);
     }
 
-    update() {
+    update(time, delta) {
         this.player.update();
+        if (this.boss) {
+            this.boss.update(time, this.player);
+        }
     }
 }
