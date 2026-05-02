@@ -5,9 +5,10 @@ import OverlayScene from '../scenes/OverlayScene.js';
 
 window.decomp = decomp;
 
-export async function startGame() {
+export async function startGame(difficulty = 'medium') {
     if (window.__stickmanGameInstance || window.__stickmanIsStarting) return; // Already running or starting
     window.__stickmanIsStarting = true;
+    window.__stickmanDifficulty = difficulty;
 
     // Capture the clean screen before injecting the game UI
     try {
@@ -50,8 +51,22 @@ export async function startGame() {
     `;
     document.body.appendChild(host);
 
+
     // Attach Shadow DOM to isolate from host page CSS
     const shadow = host.attachShadow({ mode: 'open' });
+
+    // CRITICAL FIX: Shadow DOMs do not inherit @font-face from document.head!
+    // We MUST manually inject the font-face into the shadow root so the Canvas can render it.
+    const shadowFontStyle = document.createElement('style');
+    shadowFontStyle.textContent = `
+        @font-face {
+            font-family: 'EB Garamond';
+            font-style: normal;
+            font-weight: 100 900;
+            src: url('${chrome.runtime.getURL('assets/fonts/EB_Garamond/EBGaramond-VariableFont_wght.ttf')}') format('truetype');
+        }
+    `;
+    shadow.appendChild(shadowFontStyle);
 
     // Create game container inside shadow
     const container = document.createElement('div');
@@ -81,7 +96,11 @@ export async function startGame() {
     shadow.appendChild(badge);
 
     // Fade out after 3 seconds
-    setTimeout(() => { badge.style.opacity = '0'; }, 3000);
+    window.__stickmanBadgeTimeout = setTimeout(() => { 
+        if (badge && badge.parentNode) {
+            badge.style.opacity = '0'; 
+        }
+    }, 3000);
 
     // Lock page scroll
     document.body.dataset.stickmanPrevOverflow = document.body.style.overflow;
@@ -101,7 +120,7 @@ export async function startGame() {
             default: 'matter',
             matter: {
                 gravity: { y: 1 },
-                debug: true
+                debug: false
             }
         }
     };
@@ -115,6 +134,10 @@ export function stopGame() {
     
     window.__stickmanGameInstance.destroy(true);
     window.__stickmanGameInstance = null;
+
+    if (window.__stickmanBadgeTimeout) {
+        clearTimeout(window.__stickmanBadgeTimeout);
+    }
 
     const host = document.getElementById('stickman-fight-host');
     if (host) host.remove();

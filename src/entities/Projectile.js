@@ -10,12 +10,10 @@ export default class Projectile {
         const velocityX = Math.cos(angle) * speed;
         const velocityY = Math.sin(angle) * speed;
 
-        // Create visual (red glowing orb)
-        this.sprite = scene.add.graphics();
-        this.sprite.fillStyle(0xff4444, 1);
-        this.sprite.fillCircle(0, 0, 8);
-        this.sprite.lineStyle(2, 0xffaaaa, 1);
-        this.sprite.strokeCircle(0, 0, 8);
+        // Create visual (mini boss sprite)
+        this.sprite = scene.add.sprite(x, y, 'boss-frame-1');
+        this.sprite.setScale(0.05);
+        this.sprite.play('boss-idle');
 
         // Create Matter physics body
         this.gameObject = scene.matter.add.gameObject(this.sprite, {
@@ -27,16 +25,22 @@ export default class Projectile {
             ignoreGravity: true
         });
 
+        this.gameObject.body.gameObjectClass = this;
+
         this.gameObject.setPosition(x, y);
         this.gameObject.setVelocity(velocityX, velocityY);
 
         // Auto-destroy after 5 seconds to prevent memory leaks
-        scene.time.delayedCall(5000, () => {
+        this.timerEvent = scene.time.delayedCall(5000, () => {
             this.destroy();
         });
     }
 
     destroy() {
+        if (this.timerEvent) {
+            this.timerEvent.remove(false);
+            this.timerEvent = null;
+        }
         if (this.gameObject && this.gameObject.body) {
             this.scene.matter.world.remove(this.gameObject.body);
             this.gameObject.destroy();

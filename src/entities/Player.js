@@ -9,7 +9,9 @@ export default class Player {
         this.MOVE_SPEED = 4;          // Max horizontal speed (px/step)
         this.JUMP_VELOCITY = -9;      // Instant upward impulse
         this.AIR_CONTROL = 1;         // Full air control (1 = same speed as ground)
-        this.ANIM_SPEED_MULT = 1;   // Multiplier to match animation frame speed to movement
+        this.ANIM_SPEED_MULT = 1.5;   // Multiplier to match animation frame speed to movement
+        this.health = 1;
+        this.isDead = false;
 
         // --- Compound body: main body + ground sensor ---
         const Bodies = scene.matter.bodies;
@@ -63,6 +65,7 @@ export default class Player {
         this.sensorBody = groundSensor;
 
         // Prevent rotation so the stickman stays upright
+        this.defaultInertia = this.body.inertia;
         scene.matter.body.setInertia(this.body, Infinity);
 
         // --- Ground detection via sensor collisions ---
@@ -90,9 +93,6 @@ export default class Player {
         this.virtualLeft = false;
         this.virtualRight = false;
         this.virtualJump = false;
-
-        this.lastShootDirection = 1;
-        this.lastShootTime = 0;
     }
 
     _determinePlayerColor() {
@@ -136,11 +136,45 @@ export default class Player {
         );
     }
 
+    takeHit() {
+        if (this.isDead) return;
+        this.health -= 1;
+        this.sprite.setTint(0xff0000).setTintMode(Phaser.TintModes.FILL);
+        this.scene.time.delayedCall(100, () => {
+            if (!this.isDead) {
+                const playerColor = this._determinePlayerColor();
+                this.sprite.setTint(playerColor).setTintMode(Phaser.TintModes.FILL);
+            }
+        });
+
+        if (this.health <= 0) {
+            this.die();
+        }
+    }
+
+    die() {
+        this.isDead = true;
+        this.sprite.stop(); // Stop any playing animations
+        this.sprite.setTexture('stickman-idle'); // Use static frame
+        this.sprite.setTint(0x555555).setTintMode(Phaser.TintModes.FILL);
+        this.gameObject.body.label = 'deadPlayer';
+        
+        // Restore inertia so the player is no longer an AABB and can fall naturally
+        this.scene.matter.body.setInertia(this.body, this.defaultInertia);
+        // Nudge them to tumble if standing still
+        this.gameObject.setAngularVelocity(0.05);
+
+        if (this.scene.showEndGame) {
+            this.scene.showEndGame('GAME OVER');
+        }
+    }
+
     get isGrounded() {
         return this.isTouchingGround;
     }
 
     update() {
+        if (this.isDead) return;
         const velocity = this.body.velocity;
         const speedMultiplier = this.isGrounded ? 1 : this.AIR_CONTROL;
 
@@ -162,17 +196,7 @@ export default class Player {
         // --- Jump (instant velocity, only when grounded) ---
         if ((this.keys.W.isDown || this.virtualJump) && this.isGrounded) {
             this.gameObject.setVelocityY(this.JUMP_VELOCITY);
-            this.scene.soundClick.play(); // Use click sound for jump
-        }
-
-        // --- Shoot ---
-        if (Phaser.Input.Keyboard.JustDown(this.keys.SPACE)) {
-            // "depending on the previous shoot position" - alternating the shoot direction
-            this.lastShootDirection = this.lastShootDirection === 1 ? -1 : 1;
-            
-            const targetX = this.gameObject.x + (this.lastShootDirection * 100);
-            new Projectile(this.scene, this.gameObject.x, this.gameObject.y, targetX, this.gameObject.y);
-            this.scene.soundImpactLight.play(); // Play a sound for shooting
+            this.scene.sound.play('click', { volume: 0.4 });
         }
 
         // --- Animations ---

@@ -406,8 +406,8 @@ export default class MainScene extends Phaser.Scene {
         });
 
         // ===== BACKGROUND MUSIC =====
-        this.bgmSoft = this.sound.add('bgm-soft', { volume: 0.2 });
-        this.bgmTriangle = this.sound.add('bgm-triangle', { volume: 0.2 });
+        this.bgmSoft = this.sound.add('bgm-soft', { volume: 0.35 });
+        this.bgmTriangle = this.sound.add('bgm-triangle', { volume: 0.35 });
 
         this.bgmSoft.on('complete', () => {
             this.bgmTriangle.play();
@@ -495,7 +495,9 @@ export default class MainScene extends Phaser.Scene {
                                 // Defer the hit resolution to avoid removing physics bodies while Matter.js 
                                 // is still iterating through the active collision pairs, which causes random crashes.
                                 this.time.delayedCall(0, () => {
-                                    if (staticBody.gameObjectClass) staticBody.gameObjectClass.takeHit();
+                                    if (staticBody.gameObjectClass && staticBody.gameObjectClass.scene) {
+                                        staticBody.gameObjectClass.takeHit();
+                                    }
                                 });
                                 this.soundShatter.play();
                             }
@@ -505,22 +507,37 @@ export default class MainScene extends Phaser.Scene {
                                 this.soundImpactLight.play();
                             }
                         }
-                    } else if (staticBody.label === 'playerBody' || dynamicBody.label === 'playerBody') {
+                    } else if (staticBody.label === 'player' || staticBody.label === 'playerBody') {
+                        const otherBody = dynamicBody;
+
                         const speed = Math.hypot(dynamicBody.velocity.x, dynamicBody.velocity.y);
                         if (speed > 5 && !this.soundImpactHeavy.isPlaying) {
                             this.soundImpactHeavy.play();
                         }
                         
                         // Player hit by projectile
-                        if (staticBody.label === 'projectile' || dynamicBody.label === 'projectile') {
-                            console.log('Player hit by projectile!');
+                        if (otherBody.label === 'projectile') {
+                            this.player.takeHit();
+                            if (otherBody.gameObjectClass) {
+                                otherBody.gameObjectClass.destroy();
+                            }
                         }
-                    } else if (staticBody.label === 'bossBody' || dynamicBody.label === 'bossBody') {
+                    } else if (staticBody.label === 'bossBody') {
+                        const otherBody = dynamicBody;
+
+                        // Boss hit by projectile
+                        if (otherBody.label === 'projectile') {
+                            if (this.boss) this.boss.takeHit(1);
+                            if (otherBody.gameObjectClass) {
+                                otherBody.gameObjectClass.destroy();
+                            }
+                        }
+
                         // Boss takes damage from fast moving objects (UI elements thrown by P2)
-                        if (dynamicBody.label === 'google-ui' && !dynamicBody.isStatic) {
-                            const speed = Math.hypot(dynamicBody.velocity.x, dynamicBody.velocity.y);
+                        if (otherBody.label === 'google-ui' && !otherBody.isStatic) {
+                            const speed = Math.hypot(otherBody.velocity.x, otherBody.velocity.y);
                             if (speed > 8) {
-                                // this.boss.takeHit(25);
+                                if (this.boss) this.boss.takeHit(1);
                                 this.soundImpactHeavy.play();
                             }
                         }

@@ -11,14 +11,9 @@ const SKIP_TAGS = new Set([
 ]);
 
 export function shouldInclude(el) {
-    const tag = el.tagName;
+    const tag = el.tagName.toUpperCase();
 
     if (SKIP_TAGS.has(tag)) return { valid: false, rect: null };
-
-    const style = window.getComputedStyle(el);
-    if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') {
-        return { valid: false, rect: null };
-    }
 
     const rect = el.getBoundingClientRect();
 
@@ -37,9 +32,25 @@ export function shouldInclude(el) {
         return { valid: false, rect: null };
     }
 
+    // Reject elements that stretch the whole width of the screen (e.g. banners, navbars)
+    if (rect.width > window.innerWidth * 0.90) {
+        return { valid: false, rect: null };
+    }
+
+    // Reject elements that stretch almost the whole height of the screen (e.g. sidebars)
+    if (rect.height > window.innerHeight * 0.75) {
+        return { valid: false, rect: null };
+    }
+
     // Do NOT parse children of atomic interactable elements.
     const atomicParent = el.parentElement?.closest('button, a, input, select, textarea, label');
     if (atomicParent) {
+        return { valid: false, rect: null };
+    }
+
+    // --- EXPENSIVE STYLE CHECKS MOVED HERE ---
+    const style = window.getComputedStyle(el);
+    if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') {
         return { valid: false, rect: null };
     }
 
@@ -55,12 +66,13 @@ export function shouldInclude(el) {
         n => n.nodeType === Node.TEXT_NODE && n.textContent.trim().length > 0
     );
     const hasDirectMedia = Array.from(el.children).some(
-        c => ['IMG', 'SVG', 'svg', 'CANVAS', 'VIDEO'].includes(c.tagName)
+        c => ['IMG', 'SVG', 'CANVAS', 'VIDEO'].includes(c.tagName.toUpperCase())
     );
     
-    const isAtomicTag = ['BUTTON', 'INPUT', 'TEXTAREA', 'SELECT', 'IMG', 'CANVAS', 'VIDEO', 'SVG', 'svg'].includes(tag);
+    const isAtomicTag = ['BUTTON', 'INPUT', 'TEXTAREA', 'SELECT', 'IMG', 'CANVAS', 'VIDEO', 'SVG', 'A', 'LABEL'].includes(tag);
 
     // If it has NO visual styling AND NO direct content, it's an invisible wrapper. SKIP IT.
+    // However, if it's an atomic tag (like A or LABEL), we keep it even if it has no background!
     if (!hasVisualStyling && !hasDirectText && !hasDirectMedia && !isAtomicTag) {
         return { valid: false, rect: null };
     }

@@ -8,14 +8,22 @@ console.log(`[StickmanFight] content.js loaded (HMR count: ${window.__stickmanHM
 
 let gameActive = false;
 
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+if (window.__stickmanMessageListener) {
+    chrome.runtime.onMessage.removeListener(window.__stickmanMessageListener);
+}
+
+window.__stickmanMessageListener = (message, sender, sendResponse) => {
     if (message.action === 'toggle-game') {
         if (!gameActive) {
-            startGame();
+            startGame(message.difficulty);
         } else {
             stopGame();
         }
         gameActive = !gameActive;
         sendResponse({ active: gameActive });
+    } else if (message.action === 'get-state') {
+        sendResponse({ active: gameActive });
     }
-});
+};
+
+chrome.runtime.onMessage.addListener(window.__stickmanMessageListener);

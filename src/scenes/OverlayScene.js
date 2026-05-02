@@ -48,6 +48,12 @@ export default class OverlayScene extends Phaser.Scene {
         // Load Background Music
         this.load.audio('bgm-soft', resolveAssetPath('assets/audio/songs/song_soft.wav'));
         this.load.audio('bgm-triangle', resolveAssetPath('assets/audio/songs/song_triangle.wav'));
+
+        // Load fonts natively using Phaser 4 API
+        this.load.font('EB Garamond', resolveAssetPath('assets/fonts/EB_Garamond/EBGaramond-VariableFont_wght.ttf'), 'truetype', {
+            weight: '100 900',
+            style: 'normal'
+        });
     }
 
     create() {
@@ -103,12 +109,13 @@ export default class OverlayScene extends Phaser.Scene {
         this.player = new Player(this, 100, height - 100);
 
         // Spawn boss
-        this.boss = new Boss(this, width - 150, 150);
-        console.log('[StickmanFight] Boss spawned at', width - 150, 150);
+        const difficulty = window.__stickmanDifficulty || 'medium';
+        this.boss = new Boss(this, width - 150, 150, difficulty);
+        console.log(`[StickmanFight] Boss spawned at ${width - 150}, 150 with difficulty: ${difficulty}`);
 
         // ===== BACKGROUND MUSIC =====
-        this.bgmSoft = this.sound.add('bgm-soft', { volume: 0.2 });
-        this.bgmTriangle = this.sound.add('bgm-triangle', { volume: 0.2 });
+        this.bgmSoft = this.sound.add('bgm-soft', { volume: 0.35 });
+        this.bgmTriangle = this.sound.add('bgm-triangle', { volume: 0.35 });
 
         this.bgmSoft.on('complete', () => {
             this.bgmTriangle.play();
@@ -127,6 +134,17 @@ export default class OverlayScene extends Phaser.Scene {
         // Scan the DOM and create invisible physics bodies
         this.domScanner = new DOMScanner(this);
         this.domScanner.scan();
+
+        const releaseDrag = () => {
+            this.pendingDrag = null;
+            if (this.dragConstraint) {
+                this.matter.world.remove(this.dragConstraint);
+                this.dragConstraint = null;
+            }
+        };
+
+        this.input.on('pointerup', releaseDrag);
+        this.input.on('gameout', releaseDrag);
 
         this.events.on('shutdown', () => {
             // Restore all hidden DOM elements
@@ -150,10 +168,27 @@ export default class OverlayScene extends Phaser.Scene {
 
                 const checkHit = (staticBody, dynamicBody) => {
                     if (staticBody.label === 'dom-block' && staticBody.isStatic && !dynamicBody.isStatic) {
+                        if (dynamicBody.label === 'projectile') {
+                            if (staticBody.gameObjectClass && typeof staticBody.gameObjectClass.takeProjectileHit === 'function') {
+                                staticBody.gameObjectClass.takeProjectileHit();
+                            } else if (staticBody.gameObjectClass && typeof staticBody.gameObjectClass.fallOut === 'function') {
+                                staticBody.gameObjectClass.fallOut();
+                            }
+                            if (dynamicBody.gameObjectClass) {
+                                dynamicBody.gameObjectClass.destroy();
+                            }
+                            this.soundShatter.play();
+                            return;
+                        }
+
                         const speed = Math.hypot(dynamicBody.velocity.x, dynamicBody.velocity.y);
                         if (speed > 6 || collision.depth > 3) {
-                            if (staticBody.gameObjectClass) {
-                                staticBody.gameObjectClass.takeHit();
+                            if (staticBody.gameObjectClass && typeof staticBody.gameObjectClass.takeHit === 'function') {
+                                this.time.delayedCall(0, () => {
+                                    if (staticBody.gameObjectClass && staticBody.gameObjectClass.scene) {
+                                        staticBody.gameObjectClass.takeHit();
+                                    }
+                                });
                                 this.soundShatter.play();
                             }
                         } else if (speed > 2) {
@@ -161,27 +196,39 @@ export default class OverlayScene extends Phaser.Scene {
                                 this.soundImpactLight.play();
                             }
                         }
-                    } else if (staticBody.label === 'bossBody' || dynamicBody.label === 'bossBody') {
+                    } else if (staticBody.label === 'dom-block-fallen') {
+                        if (dynamicBody.label === 'projectile') {
+                            if (staticBody.gameObjectClass && typeof staticBody.gameObjectClass.takeProjectileHit === 'function') {
+                                staticBody.gameObjectClass.takeProjectileHit();
+                            } else if (staticBody.gameObjectClass && typeof staticBody.gameObjectClass.destroy === 'function') {
+                                staticBody.gameObjectClass.destroy();
+                            }
+                            if (dynamicBody.gameObjectClass) {
+                                dynamicBody.gameObjectClass.destroy();
+                            }
+                            this.soundShatter.play();
+                        }
+                    } else if (staticBody.label === 'bossBody') {
                         // Boss takes damage from fast moving objects
-                        const bossBody = staticBody.label === 'bossBody' ? staticBody : dynamicBody;
-                        const otherBody = staticBody.label === 'bossBody' ? dynamicBody : staticBody;
+                        const otherBody = dynamicBody;
                         
                         if (!otherBody.isStatic && otherBody.label === 'dom-block-fallen') {
                             const speed = Math.hypot(otherBody.velocity.x, otherBody.velocity.y);
-                            if (speed > 8) {
-                                // Boss no longer takes damage from physics objects to prevent dying
-                                // if (this.boss) this.boss.takeHit(25);
+                            if (speed > 4) {
+                                if (this.boss) this.boss.takeHit(1);
                                 if (!this.soundImpactHeavy.isPlaying) {
                                     this.soundImpactHeavy.play();
                                 }
                             }
                         }
-                    } else if (staticBody.label === 'player' || dynamicBody.label === 'player') {
-                        const playerBody = staticBody.label === 'player' ? staticBody : dynamicBody;
-                        const otherBody = staticBody.label === 'player' ? dynamicBody : staticBody;
+                    } else if (staticBody.label === 'player' || staticBody.label === 'playerBody') {
+                        const otherBody = dynamicBody;
                         
                         if (otherBody.label === 'projectile') {
-                            console.log('Player hit by projectile!');
+                            if (this.player) this.player.takeHit();
+                            if (otherBody.gameObjectClass) {
+                                otherBody.gameObjectClass.destroy();
+                            }
                         }
                     }
                 };
@@ -193,7 +240,12 @@ export default class OverlayScene extends Phaser.Scene {
 
         // Mouse spring for dragging DOM blocks (Phase 3+)
         this.mouseSpringPlugin = this.matter.add.mouseSpring({
-            length: 0.01, stiffness: 0.2, damping: 0.1
+            length: 0.01, stiffness: 0.2, damping: 0.1,
+            collisionFilter: {
+                category: 0x0001,
+                mask: ~0x0002, // Everything except category 2
+                group: 0
+            }
         });
 
         // Click-to-detach DOM blocks (Boss player mechanic)
@@ -300,6 +352,107 @@ export default class OverlayScene extends Phaser.Scene {
         jumpBtn.on('pointerout', () => {
             this.player.virtualJump = false;
             jumpBtn.setAlpha(alphaNormal);
+        });
+    }
+
+    showEndGame(textStr) {
+        if (this.isGameOver) return;
+        this.isGameOver = true;
+
+        const width = this.scale.width;
+        const height = this.scale.height;
+
+        const textColor = textStr === 'YOU WIN' ? '#4ade80' : '#f87171';
+
+        const textObj = this.add.text(width / 2, height / 2, '', {
+            fontFamily: '"EB Garamond", serif',
+            fontSize: '84px',
+            fontStyle: 'normal',
+            color: textColor,
+            shadow: {
+                offsetX: 3,
+                offsetY: 3,
+                color: 'rgba(0,0,0,0.8)',
+                blur: 6,
+                stroke: false,
+                fill: true
+            },
+            align: 'center'
+        }).setOrigin(0.5).setDepth(1000).setScrollFactor(0);
+
+        const cursorObj = this.add.text(width / 2, height / 2 - 5, '|', {
+            fontFamily: '"EB Garamond", serif',
+            fontSize: '84px',
+            fontStyle: 'normal',
+            color: textColor,
+            shadow: {
+                offsetX: 3,
+                offsetY: 3,
+                color: 'rgba(0,0,0,0.8)',
+                blur: 6,
+                stroke: false,
+                fill: true
+            },
+            align: 'left'
+        }).setOrigin(0, 0.5).setDepth(1000).setScrollFactor(0);
+
+        let i = 0;
+        let cursorVisible = true;
+        let isTyping = true;
+        
+        const updateCursor = () => {
+            cursorObj.setX(textObj.x + textObj.width / 2);
+            cursorObj.setVisible(cursorVisible);
+        };
+
+        let cursorEvent = this.time.addEvent({
+            delay: 500,
+            loop: true,
+            callback: () => {
+                if (!isTyping) {
+                    cursorVisible = !cursorVisible;
+                } else {
+                    cursorVisible = true;
+                }
+                updateCursor();
+            }
+        });
+        
+        // Typewriter effect
+        this.time.addEvent({
+            delay: 150,
+            repeat: textStr.length - 1,
+            callback: () => {
+                i++;
+                textObj.setText(textStr.substring(0, i));
+                updateCursor();
+                if (i === textStr.length) {
+                    isTyping = false;
+                }
+            }
+        });
+
+        // After it finishes typing + 3 seconds wait
+        const holdTime = (textStr.length * 150) + 3000;
+
+        this.time.delayedCall(holdTime, () => {
+            isTyping = true;
+            // Typewriter delete effect
+            this.time.addEvent({
+                delay: 75,
+                repeat: textStr.length - 1,
+                callback: () => {
+                    i--;
+                    textObj.setText(textStr.substring(0, i));
+                    updateCursor();
+                    if (i === 0) {
+                        isTyping = false;
+                        cursorVisible = false;
+                        updateCursor();
+                        cursorEvent.remove();
+                    }
+                }
+            });
         });
     }
 

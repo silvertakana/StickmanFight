@@ -25,7 +25,10 @@ export default class DOMScanner {
         const rects = []; // Track placed rects to avoid heavy overlaps
 
         // PHASE 1: READ ONLY (prevents layout thrashing)
+        const MAX_BLOCKS = 150; // Cap to prevent Matter.js from choking on too many physics bodies
         for (const el of allElements) {
+            if (validElements.length >= MAX_BLOCKS) break;
+
             // Skip our own game container
             if (hostEl && hostEl.contains(el)) continue;
 
@@ -49,10 +52,7 @@ export default class DOMScanner {
         }
 
         // PHASE 2: WRITE ONLY (instantiating blocks modifies the DOM)
-        const MAX_BLOCKS = 150; // Cap to prevent Matter.js from choking on too many physics bodies
-        const count = Math.min(validElements.length, MAX_BLOCKS);
-
-        for (let i = 0; i < count; i++) {
+        for (let i = 0; i < validElements.length; i++) {
             const { el, rect } = validElements[i];
             const block = new DOMBlock(this.scene, el, rect);
             this.blocks.push(block);

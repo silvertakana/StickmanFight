@@ -1,4 +1,6 @@
-import { toCanvas } from "/vendor/.vite-deps-html-to-image.js__v--95411efd.js";
+// Global cache for native viewport captures to prevent Chrome throttling 
+// when multiple blocks (e.g., in an AOE explosion) fall simultaneously.
+let sharedCapturePromise = null;
 
 export default class DOMBlock {
     constructor(scene, domElement, rect) {
@@ -32,6 +34,28 @@ export default class DOMBlock {
         }
     }
 
+    takeProjectileHit() {
+        this.projectileHits = (this.projectileHits || 0) + 1;
+
+        if (this.projectileHits >= 3) {
+            this.destroy();
+            return;
+        }
+
+        if (this.fallenSprite) {
+            if (this.projectileHits === 1) {
+                this.fallenSprite.setTint(0xaaaaaa);
+            } else if (this.projectileHits === 2) {
+                this.fallenSprite.setTint(0x555555);
+            }
+        }
+
+        if (!this.isFallenButProcessed) {
+            this.isFallen = true;
+            this.fallOut();
+        }
+    }
+
     fallOut(suppressKick = false) {
         if (this.isFallenButProcessed) return;
         this.isFallenButProcessed = true;
@@ -56,49 +80,93 @@ export default class DOMBlock {
 
         this.domElement.style.outline = 'none';
 
-        // Use html-to-image for blazing fast, perfectly isolated off-screen rendering
-        // Use html-to-image for blazing fast, perfectly isolated off-screen rendering
-        const texturePromise = toCanvas(this.domElement, {
-            width: rect.width,
-            height: rect.height,
-            pixelRatio: window.devicePixelRatio || 1, // Let it use high-res scaling to prevent internal SVG cropping
-            skipFonts: false, // Keep fonts so text looks correct
-            style: {
-                // Force the clone to perfectly match the physics boundaries
-                // and ignore any layout offsets or transforms from the original page
-                margin: '0',
-                top: '0',
-                left: '0',
-                width: rect.width + 'px',
-                height: rect.height + 'px',
-                boxSizing: 'border-box',
-                transform: 'none'
+        // --- STACKING CONTEXT BREAKOUT ---
+        // Elevate the element AND all its ancestors to the top of the stacking context.
+        // This guarantees that even if trapped in a low z-index container, it pops 
+        // over sticky headers before the screenshot is taken.
+        const originalStyles = [];
+        let curr = this.domElement;
+        while (curr && curr !== document.body && curr !== document.documentElement) {
+            const computed = window.getComputedStyle(curr);
+            originalStyles.push({
+                el: curr,
+                zIndex: curr.style.zIndex,
+                position: curr.style.position
+            });
+            if (computed.position === 'static') {
+                curr.style.position = 'relative';
             }
-        }).then(canvas => {
-            // Hide element ONLY AFTER the off-screen capture is fully complete!
-            // This prevents the user from seeing any flicker or missing frames.
+            curr.style.zIndex = '2147483645';
+            curr = curr.parentElement;
+        }
+        // -----------------------------------
+
+        const viewportRect = this.domElement.getBoundingClientRect();
+
+        // Batch concurrent capture requests into a single full-screen screenshot
+        if (!sharedCapturePromise) {
+            sharedCapturePromise = new Promise((resolve, reject) => {
+                // Wait 60ms to guarantee the browser has actually painted the new 
+                // recursive z-index tree to the screen compositor before we take the picture.
+                setTimeout(() => {
+                    chrome.runtime.sendMessage({ action: 'capture-screen' }, (response) => {
+                        if (chrome.runtime.lastError || !response || !response.dataUrl) {
+                            return reject(new Error('Native capture failed'));
+                        }
+                        const img = new Image();
+                        img.onload = () => resolve(img);
+                        img.onerror = () => reject(new Error('Image load failed'));
+                        img.src = response.dataUrl;
+                    });
+                }, 60);
+            });
+
+            // Clear the cache shortly after so future distinct hits get a fresh capture
+            setTimeout(() => {
+                sharedCapturePromise = null;
+            }, 150);
+        }
+
+        const texturePromise = sharedCapturePromise.then((fullScreenImg) => {
+            // Restore original stacking context styles so the page doesn't stay broken
+            for (const cache of originalStyles) {
+                cache.el.style.zIndex = cache.zIndex;
+                cache.el.style.position = cache.position;
+            }
+
+            // Hide element ONLY AFTER the shared screenshot is fully resolved!
             this.domElement.style.opacity = '0';
             this.domElement.style.pointerEvents = 'none';
 
-            // Ensure canvas is optimized for our physics engine's rapid readbacks
-            const optimizedCanvas = document.createElement('canvas');
-            optimizedCanvas.width = rect.width;
-            optimizedCanvas.height = rect.height;
-            const ctx = optimizedCanvas.getContext('2d', { willReadFrequently: true });
+            const cropCanvas = document.createElement('canvas');
+            cropCanvas.width = rect.width;
+            cropCanvas.height = rect.height;
+            const cropCtx = cropCanvas.getContext('2d', { willReadFrequently: true });
             
-            // Draw the high-res generated canvas onto our 1x optimized canvas, 
-            // perfectly downscaling it to our exact physics rect boundaries.
-            ctx.drawImage(canvas, 0, 0, rect.width, rect.height);
-
-            return optimizedCanvas;
+            // Account for Retina displays
+            const dpr = window.devicePixelRatio || 1;
+            
+            // Crop out this specific element from the shared full screen capture
+            cropCtx.drawImage(
+                fullScreenImg,
+                viewportRect.left * dpr,
+                viewportRect.top * dpr,
+                viewportRect.width * dpr,
+                viewportRect.height * dpr,
+                0, 0, rect.width, rect.height
+            );
+            return cropCanvas;
         });
 
         // Create a visible Phaser sprite IMMEDIATELY with an invisible placeholder
         const textureKey = `dom-capture-${Date.now()}-${Math.random()}`;
+        this.textureKey = textureKey;
         const fallback = document.createElement('canvas');
         fallback.width = rect.width;
         fallback.height = rect.height;
         const ctx = fallback.getContext('2d', { willReadFrequently: true });
+        // Must be completely transparent! If we draw a gray box here, the native 
+        // captureVisibleTab will capture the screen WITH the gray box on top of the element!
         ctx.clearRect(0, 0, rect.width, rect.height);
         this.scene.textures.addCanvas(textureKey, fallback);
 
@@ -110,6 +178,14 @@ export default class DOMBlock {
             restitution: 0.3,
             chamfer: { radius: Math.min(rect.width, rect.height) * 0.05 }
         });
+        this.fallenSprite.body.gameObjectClass = this;
+
+        // Apply existing tint if it was hit before falling
+        if (this.projectileHits === 1) {
+            this.fallenSprite.setTint(0xaaaaaa);
+        } else if (this.projectileHits === 2) {
+            this.fallenSprite.setTint(0x555555);
+        }
 
         if (!suppressKick) {
             const mass = this.fallenSprite.body.mass;
@@ -132,7 +208,7 @@ export default class DOMBlock {
                         if (imgData[i] > 10) { hasPixels = true; break; }
                     }
                 } catch (e) {
-                    console.warn('[StickmanFight] Tainted canvas, using texture anyway');
+                    console.warn('[StickmanFight] Tainted canvas (foreignObject CORS), using texture anyway');
                 }
 
                 if (!hasPixels) return;
@@ -149,10 +225,9 @@ export default class DOMBlock {
                 }
             }
         }).catch(err => {
-            // If html-to-image fails, at least hide the element so the player can interact
             this.domElement.style.opacity = '0';
             this.domElement.style.pointerEvents = 'none';
-            console.error('[StickmanFight] html-to-image capture error:', err);
+            console.error('[StickmanFight] Texture capture error:', err);
         });
     }
 
@@ -164,6 +239,9 @@ export default class DOMBlock {
         if (this.fallenSprite) {
             this.fallenSprite.destroy();
             this.fallenSprite = null;
+        }
+        if (this.textureKey && this.scene && this.scene.textures && this.scene.textures.exists(this.textureKey)) {
+            this.scene.textures.remove(this.textureKey);
         }
     }
 }
