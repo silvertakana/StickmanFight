@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body {
+      width: 220px;
+      padding: 16px;
+      font-family: 'Segoe UI', sans-serif;
+      background: #1a1a2e;
+      color: #e8eaed;
+      margin: 0;
+    }
+    h1 {
+      font-size: 16px;
+      margin: 0 0 12px 0;
+      text-align: center;
+    }
+    #toggle-btn {
+      width: 100%;
+      padding: 10px;
+      border: none;
+      border-radius: 8px;
+      background: linear-gradient(135deg, #4285F4, #34A853);
+      color: white;
+      font-size: 14px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+    #toggle-btn:hover { opacity: 0.85; }
+    #toggle-btn.active {
+      background: linear-gradient(135deg, #EA4335, #FBBC05);
+    }
+    .status {
+      text-align: center;
+      font-size: 11px;
+      color: #9aa0a6;
+      margin-top: 8px;
+    }
+  </style>
+</head>
+<body>
+  <h1>⚔️ Stickman Fight</h1>
+  <button id="toggle-btn">Start Game</button>
+  <div class="status" id="status">Click to play on this page</div>
+  <script type="module" src="popup.js"></script>
+</body>
+</html>
