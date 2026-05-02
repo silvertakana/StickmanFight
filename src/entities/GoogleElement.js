@@ -34,21 +34,23 @@ export default class GoogleElement {
         this.gameObject = scene.matter.add.gameObject(this.container, physicsConfig);
 
         // Compensate for Matter.js center-of-mass shift on custom polygons
-        if (physicsConfig.shape && physicsConfig.shape.type === 'fromVerts') {
+        if (physicsConfig.shape && physicsConfig.shape.type === 'fromVerts' && options.origMinX !== undefined) {
             const body = this.gameObject.body;
-            const boundsCenter = {
-                x: (body.bounds.min.x + body.bounds.max.x) / 2,
-                y: (body.bounds.min.y + body.bounds.max.y) / 2
-            };
-            const offset = {
-                x: boundsCenter.x - body.position.x,
-                y: boundsCenter.y - body.position.y
-            };
             
+            // Matter.js shifts vertices locally to center them on the center-of-mass.
+            // By comparing the original bounding box min with the shifted world bounding box min, 
+            // we find the exact center of mass offset calculated by Matter.
+            const cmX = options.origMinX + body.position.x - body.bounds.min.x;
+            const cmY = options.origMinY + body.position.y - body.bounds.min.y;
+            
+            // Move visuals to align with physics body
             this.container.each(child => {
-                child.x += offset.x;
-                child.y += offset.y;
+                child.x = -cmX;
+                child.y = -cmY;
             });
+            
+            // Move the container globally so the visuals end up exactly where they were originally intended!
+            this.gameObject.setPosition(this.container.x + cmX, this.container.y + cmY);
         }
 
         // Store reference for pointer and collision logic

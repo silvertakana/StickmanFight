@@ -10,14 +10,13 @@ export default class Boss {
         this.lastFiredTime = 0;
         this.FIRE_COOLDOWN = 2000; // ms
 
-        // Visual setup (scaled up red stickman)
-        this.sprite = scene.add.sprite(x, y, 'stickman-idle');
-        this.sprite.setScale(1.5);
-        this.sprite.setTint(0xff0000).setTintMode(Phaser.TintModes.FILL); // Red boss
+        // Visual setup (custom scribble boss)
+        this.sprite = scene.add.sprite(x, y, 'boss-frame-1');
+        this.sprite.setScale(0.15); // Scale down large 1104px image
 
         // Physics setup
         this.gameObject = scene.matter.add.gameObject(this.sprite, {
-            shape: { type: 'rectangle', width: 27, height: 84 }, // 18x56 scaled by 1.5
+            shape: { type: 'circle', radius: 50 }, // Roughly fits the scribble ball
             label: 'bossBody',
             ignoreGravity: true, // Boss hovers
             frictionAir: 0.1,
@@ -28,15 +27,15 @@ export default class Boss {
         scene.matter.body.setInertia(this.gameObject.body, Infinity);
         
         // Play idle anim
-        this.sprite.play('idle');
+        this.sprite.play('boss-idle');
     }
 
     takeHit(damage) {
         this.health -= damage;
-        // Flash white when hit
-        this.sprite.setTint(0xffffff).setTintMode(Phaser.TintModes.FILL);
+        // Flash red when hit
+        this.sprite.setTintFill(0xff0000);
         this.scene.time.delayedCall(100, () => {
-            if (this.health > 0) this.sprite.setTint(0xff0000).setTintMode(Phaser.TintModes.FILL);
+            if (this.health > 0) this.sprite.clearTint();
         });
 
         if (this.health <= 0) {

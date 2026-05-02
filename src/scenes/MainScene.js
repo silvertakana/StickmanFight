@@ -9,17 +9,33 @@ export default class MainScene extends Phaser.Scene {
     }
 
     preload() {
-        // Load Stickman sprites
-        this.load.spritesheet('stickman-run', 'assets/sprites/stickman/StickmanPack/Run/Run.png?v=3', { frameWidth: 64, frameHeight: 64 });
-        this.load.spritesheet('stickman-idle', 'assets/sprites/stickman/StickmanPack/Idle/Thin.png?v=3', { frameWidth: 64, frameHeight: 64 });
-        this.load.image('stickman-jump-up', 'assets/sprites/stickman/StickmanPack/Jump/JumpUp.png?v=3');
-        this.load.image('stickman-jump-down', 'assets/sprites/stickman/StickmanPack/Jump/JumpDown.png?v=3');
+        // Load Stickman sprites (V0.1 Thick)
+        this.load.spritesheet('stickman-run', 'assets/sprites/stickman/StickmanPack/Run/thickRunSheet.png?v=5', { frameWidth: 64, frameHeight: 64 });
+        this.load.spritesheet('stickman-idle', 'assets/sprites/stickman/StickmanPack/Idle/thickIdleSheet.png?v=5', { frameWidth: 64, frameHeight: 64 });
+        
+        // Load Thickened Jump frames (from V0.2)
+        this.load.image('stickman-jump-up', 'assets/sprites/stickman/StickmanPack/Jump/JumpUp.png?v=5');
+        this.load.image('stickman-jump-down', 'assets/sprites/stickman/StickmanPack/Jump/JumpDown.png?v=5');
+
+        // Load Boss frames
+        this.load.image('boss-frame-1', 'assets/sprites/enemy/boss_frame1.png');
+        this.load.image('boss-frame-2', 'assets/sprites/enemy/boss_frame2.png');
+        this.load.image('boss-frame-3', 'assets/sprites/enemy/boss_frame3.png');
+        this.load.image('boss-frame-4', 'assets/sprites/enemy/boss_frame4.png');
+
+        // Load Background Music
+        this.load.audio('bgm-soft', 'assets/audio/songs/song_soft.wav');
+        this.load.audio('bgm-triangle', 'assets/audio/songs/song_triangle.wav');
 
         // Load SFX
         this.load.audio('impact-light', 'assets/audio/sfx/impact/Audio/impactGeneric_light_000.ogg');
         this.load.audio('impact-heavy', 'assets/audio/sfx/impact/Audio/impactBell_heavy_000.ogg');
         this.load.audio('click', 'assets/audio/sfx/interface/Audio/click_001.ogg');
         this.load.audio('shatter', 'assets/audio/sfx/interface/Audio/bong_001.ogg');
+        this.load.audio('ui-impact-1', 'assets/audio/sfx/impact/Audio/impactWood_light_000.ogg');
+        this.load.audio('ui-impact-2', 'assets/audio/sfx/impact/Audio/impactWood_light_001.ogg');
+        this.load.audio('ui-impact-3', 'assets/audio/sfx/impact/Audio/impactWood_light_002.ogg');
+        this.load.audio('ui-impact-4', 'assets/audio/sfx/impact/Audio/impactWood_light_003.ogg');
     }
 
     create() {
@@ -103,79 +119,102 @@ export default class MainScene extends Phaser.Scene {
             t.destroy();
         }
 
-        const getTextVertices = (textStr, fontSize, w, h) => {
-            const canvas = document.createElement('canvas');
-            canvas.width = Math.max(1, Math.ceil(w + 10)); // padding
-            canvas.height = Math.max(1, Math.ceil(h + 10));
-            const ctx = canvas.getContext('2d', { willReadFrequently: true });
-            
-            ctx.font = `${fontSize} 'Product Sans', 'Arial', sans-serif`;
-            ctx.fillStyle = 'white';
-            ctx.textBaseline = 'middle';
-            ctx.textAlign = 'center';
-            ctx.fillText(textStr, canvas.width / 2, canvas.height / 2);
-            
-            const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
-            const getA = (x, y) => {
-                if (x < 0 || y < 0 || x >= canvas.width || y >= canvas.height) return 0;
-                return imgData[(y * canvas.width + x) * 4 + 3];
-            };
-            
-            let startX = -1, startY = -1;
-            for (let y = 0; y < canvas.height; y++) {
-                for (let x = 0; x < canvas.width; x++) {
-                    if (getA(x, y) > 128) { startX = x; startY = y; break; }
-                }
-                if (startX !== -1) break;
-            }
-            if (startX === -1) return null;
-            
-            const dirX = [0, 1, 1, 1, 0, -1, -1, -1];
-            const dirY = [-1, -1, 0, 1, 1, 1, 0, -1];
-            let cx = startX, cy = startY, cDir = 0;
-            const path = [];
-            let count = 0;
-            
-            do {
-                path.push({ x: cx, y: cy });
-                count++;
-                cDir = (cDir + 6) % 8;
-                let found = false;
-                for (let i = 0; i < 8; i++) {
-                    const d = (cDir + i) % 8;
-                    if (getA(cx + dirX[d], cy + dirY[d]) > 128) {
-                        cx += dirX[d];
-                        cy += dirY[d];
-                        cDir = d;
-                        found = true;
-                        break;
-                    }
-                }
-                if (!found) break;
-            } while ((cx !== startX || cy !== startY) && count < 2000);
-            
-            const simplified = [];
-            let minX = Infinity, minY = Infinity;
-            const step = Math.max(1, Math.floor(path.length / 40));
-            const offsetX = canvas.width / 2;
-            const offsetY = canvas.height / 2;
-            for (let i = 0; i < path.length; i += step) {
-                const px = path[i].x - offsetX;
-                const py = path[i].y - offsetY;
-                minX = Math.min(minX, px);
-                minY = Math.min(minY, py);
-                simplified.push(`${px} ${py}`);
-            }
-            return { verts: simplified.join(' '), minX, minY };
-        };
-
         let startX = centerX - (totalWidth / 2);
         for (let i = 0; i < googleLetters.length; i++) {
             const letter = googleLetters[i];
             const dims = letterWidths[i];
             
-            const shapeData = getTextVertices(letter.char, letter.size, dims.w, dims.h);
-            const shapeConfig = shapeData && shapeData.verts ? { type: 'fromVerts', verts: shapeData.verts } : undefined;
+            if (dims.w === 0 || dims.h === 0) {
+                startX += dims.w;
+                continue;
+            }
+            
+            // Render exactly how Phaser renders to get a perfectly matching canvas texture
+            const tempText = this.add.text(0, 0, letter.char, {
+                fontFamily: "'Product Sans', 'Arial', sans-serif",
+                fontSize: letter.size,
+                color: letter.color
+            }).setOrigin(0.5, 0.5);
+            
+            const texCanvas = tempText.canvas;
+            const resX = texCanvas.width / tempText.width;
+            const resY = texCanvas.height / tempText.height;
+            
+            // Add padding to prevent Moore neighborhood boundary crashes
+            const pad = 10;
+            const canvas = document.createElement('canvas');
+            canvas.width = texCanvas.width + pad * 2;
+            canvas.height = texCanvas.height + pad * 2;
+            const ctx = canvas.getContext('2d', { willReadFrequently: true });
+            ctx.drawImage(texCanvas, pad, pad);
+            
+            const w = canvas.width;
+            const h = canvas.height;
+            const imgData = ctx.getImageData(0, 0, w, h).data;
+            const getA = (x, y) => {
+                if (x < 0 || y < 0 || x >= w || y >= h) return 0;
+                return imgData[(y * w + x) * 4 + 3];
+            };
+            
+            let pStartX = -1, pStartY = -1;
+            for (let y = 0; y < h; y++) {
+                for (let x = 0; x < w; x++) {
+                    if (getA(x, y) > 128) { pStartX = x; pStartY = y; break; }
+                }
+                if (pStartX !== -1) break;
+            }
+            
+            let shapeConfig = undefined;
+            let origMinX = undefined, origMinY = undefined;
+            
+            if (pStartX !== -1) {
+                const dirX = [0, 1, 1, 1, 0, -1, -1, -1];
+                const dirY = [-1, -1, 0, 1, 1, 1, 0, -1];
+                let cx = pStartX, cy = pStartY, cDir = 0;
+                const path = [];
+                let count = 0;
+                do {
+                    path.push({ x: cx, y: cy });
+                    count++;
+                    cDir = (cDir + 6) % 8;
+                    let found = false;
+                    for (let j = 0; j < 8; j++) {
+                        const d = (cDir + j) % 8;
+                        if (getA(cx + dirX[d], cy + dirY[d]) > 128) {
+                            cx += dirX[d];
+                            cy += dirY[d];
+                            cDir = d;
+                            found = true;
+                            break;
+                        }
+                    }
+                    if (!found) break;
+                } while ((cx !== pStartX || cy !== pStartY) && count < 2000);
+                
+                const simplified = [];
+                let minX = Infinity, minY = Infinity;
+                const step = Math.max(1, Math.floor(path.length / 40));
+                
+                // Padded canvas center corresponds exactly to Phaser's visual origin!
+                const offsetX = pad + (texCanvas.width / 2);
+                const offsetY = pad + (texCanvas.height / 2);
+                
+                for (let j = 0; j < path.length; j += step) {
+                    const px = (path[j].x - offsetX) / resX;
+                    const py = (path[j].y - offsetY) / resY;
+                    minX = Math.min(minX, px);
+                    minY = Math.min(minY, py);
+                    simplified.push(`${px} ${py}`);
+                }
+                
+                if (simplified.length >= 3) {
+                    shapeConfig = { type: 'fromVerts', verts: simplified.join(' ') };
+                    origMinX = minX;
+                    origMinY = minY;
+                }
+            }
+            
+            tempText.destroy();
             
             new GoogleElement(this, startX + dims.w / 2, logoY, dims.w, dims.h, (container, scene) => {
                 const t = scene.add.text(0, 0, letter.char, {
@@ -187,8 +226,8 @@ export default class MainScene extends Phaser.Scene {
             }, { 
                 maxHits: 3, 
                 shape: shapeConfig,
-                origMinX: shapeData ? shapeData.minX : undefined,
-                origMinY: shapeData ? shapeData.minY : undefined
+                origMinX: origMinX,
+                origMinY: origMinY
             });
             
             startX += dims.w;
@@ -364,14 +403,47 @@ export default class MainScene extends Phaser.Scene {
             repeat: -1
         });
 
+        // ===== BACKGROUND MUSIC =====
+        this.bgmSoft = this.sound.add('bgm-soft', { volume: 0.2 });
+        this.bgmTriangle = this.sound.add('bgm-triangle', { volume: 0.2 });
+
+        this.bgmSoft.on('complete', () => {
+            this.bgmTriangle.play();
+        });
+        this.bgmTriangle.on('complete', () => {
+            this.bgmSoft.play();
+        });
+
+        // Start the first track
+        this.bgmSoft.play();
+
         // ===== SOUNDS =====
         this.soundImpactLight = this.sound.add('impact-light', { volume: 0.3 });
         this.soundImpactHeavy = this.sound.add('impact-heavy', { volume: 0.5 });
         this.soundClick = this.sound.add('click', { volume: 0.4 });
         this.soundShatter = this.sound.add('shatter', { volume: 0.6 });
+        this.soundUIImpacts = [
+            this.sound.add('ui-impact-1'),
+            this.sound.add('ui-impact-2'),
+            this.sound.add('ui-impact-3'),
+            this.sound.add('ui-impact-4')
+        ];
 
         // ===== STICKMAN =====
         this.player = new Player(this, 100, height - 100);
+
+        // ===== BOSS ANIMATION =====
+        this.anims.create({
+            key: 'boss-idle',
+            frames: [
+                { key: 'boss-frame-1' },
+                { key: 'boss-frame-2' },
+                { key: 'boss-frame-3' },
+                { key: 'boss-frame-4' }
+            ],
+            frameRate: 6,
+            repeat: -1
+        });
 
         // ===== BOSS =====
         this.boss = new Boss(this, width - 150, 150);
@@ -380,6 +452,29 @@ export default class MainScene extends Phaser.Scene {
         const handleCollision = (event) => {
             event.pairs.forEach(pair => {
                 const { bodyA, bodyB, collision } = pair;
+                
+                const parentA = bodyA.parent || bodyA;
+                const parentB = bodyB.parent || bodyB;
+
+                // General tactile physics sound for any objects hitting
+                if (!parentA.isSensor && !parentB.isSensor) {
+                    const isCharacter = parentA.label === 'playerBody' || parentB.label === 'playerBody' || parentA.label === 'bossBody' || parentB.label === 'bossBody';
+                    
+                    if (!isCharacter) {
+                        const speedA = parentA.isStatic ? 0 : Math.hypot(parentA.velocity.x, parentA.velocity.y);
+                        const speedB = parentB.isStatic ? 0 : Math.hypot(parentB.velocity.x, parentB.velocity.y);
+                        const relativeSpeed = speedA + speedB;
+                        
+                        if (relativeSpeed > 1) {
+                            if (this.time.now - (this.lastTactileSoundTime || 0) > 50) {
+                                const impactSound = Phaser.Utils.Array.GetRandom(this.soundUIImpacts);
+                                const vol = Phaser.Math.Clamp(relativeSpeed / 15, 0.05, 0.4);
+                                impactSound.play({ volume: vol, rate: 0.9 + Math.random() * 0.2 });
+                                this.lastTactileSoundTime = this.time.now;
+                            }
+                        }
+                    }
+                }
                 
                 const checkHit = (staticPart, dynamicPart) => {
                     const staticBody = staticPart.parent || staticPart;
@@ -433,6 +528,42 @@ export default class MainScene extends Phaser.Scene {
 
         this.matter.world.on('collisionstart', handleCollision);
         this.matter.world.on('collisionactive', handleCollision);
+
+        // --- Virtual Touch Controls ---
+        this._createVirtualControls(width, height);
+    }
+
+    _createVirtualControls(width, height) {
+        const isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+        if (!isTouch) return;
+
+        const btnStyle = {
+            fontSize: '32px',
+            color: '#ffffff',
+            fontFamily: 'Arial',
+            backgroundColor: '#000000',
+            padding: { x: 15, y: 10 },
+            fixedWidth: 60,
+            align: 'center'
+        };
+
+        const alphaNormal = 0.4;
+        const alphaPressed = 0.8;
+
+        const leftBtn = this.add.text(30, height - 80, '❮', btnStyle).setScrollFactor(0).setInteractive().setAlpha(alphaNormal).setDepth(100);
+        leftBtn.on('pointerdown', () => { this.player.virtualLeft = true; leftBtn.setAlpha(alphaPressed); });
+        leftBtn.on('pointerup', () => { this.player.virtualLeft = false; leftBtn.setAlpha(alphaNormal); });
+        leftBtn.on('pointerout', () => { this.player.virtualLeft = false; leftBtn.setAlpha(alphaNormal); });
+
+        const rightBtn = this.add.text(110, height - 80, '❯', btnStyle).setScrollFactor(0).setInteractive().setAlpha(alphaNormal).setDepth(100);
+        rightBtn.on('pointerdown', () => { this.player.virtualRight = true; rightBtn.setAlpha(alphaPressed); });
+        rightBtn.on('pointerup', () => { this.player.virtualRight = false; rightBtn.setAlpha(alphaNormal); });
+        rightBtn.on('pointerout', () => { this.player.virtualRight = false; rightBtn.setAlpha(alphaNormal); });
+
+        const jumpBtn = this.add.text(width - 90, height - 80, '▲', btnStyle).setScrollFactor(0).setInteractive().setAlpha(alphaNormal).setDepth(100);
+        jumpBtn.on('pointerdown', () => { this.player.virtualJump = true; jumpBtn.setAlpha(alphaPressed); });
+        jumpBtn.on('pointerup', () => { this.player.virtualJump = false; jumpBtn.setAlpha(alphaNormal); });
+        jumpBtn.on('pointerout', () => { this.player.virtualJump = false; jumpBtn.setAlpha(alphaNormal); });
     }
 
     update(time, delta) {

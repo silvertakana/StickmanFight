@@ -7,3 +7,17 @@ chrome.commands.onCommand.addListener(async (command) => {
         }
     }
 });
+
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message.action === 'capture-screen') {
+        chrome.tabs.captureVisibleTab(null, { format: 'png' }, (dataUrl) => {
+            if (chrome.runtime.lastError) {
+                console.error(chrome.runtime.lastError);
+                sendResponse({ error: chrome.runtime.lastError.message });
+            } else {
+                sendResponse({ dataUrl });
+            }
+        });
+        return true;
+    }
+});

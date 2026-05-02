@@ -8,7 +8,7 @@ export default class Player {
         this.MOVE_SPEED = 4;          // Max horizontal speed (px/step)
         this.JUMP_VELOCITY = -9;      // Instant upward impulse
         this.AIR_CONTROL = 1;         // Full air control (1 = same speed as ground)
-        this.ANIM_SPEED_MULT = 1.5;   // Multiplier to match animation frame speed to movement
+        this.ANIM_SPEED_MULT = 1;   // Multiplier to match animation frame speed to movement
 
         // --- Compound body: main body + ground sensor ---
         const Bodies = scene.matter.bodies;
@@ -45,7 +45,8 @@ export default class Player {
         // Create the visual sprite and attach the compound body
         this.sprite = scene.add.sprite(x, y, 'stickman-idle');
         this.sprite.setScale(1.0); // Adjust scale to match physics body
-        this.sprite.setTint(0xffffff).setTintMode(Phaser.TintModes.FILL); // Make the stickman completely white
+        const playerColor = this._determinePlayerColor();
+        this.sprite.setTint(playerColor).setTintMode(Phaser.TintModes.FILL); // Color stickman based on page background
         this.gameObject = scene.matter.add.gameObject(this.sprite);
         this.gameObject.setExistingBody(compoundBody);
         
@@ -84,6 +85,43 @@ export default class Player {
 
         // --- Input ---
         this.keys = scene.input.keyboard.addKeys('W,A,S,D,SPACE');
+        
+        // Virtual inputs for touch screens
+        this.virtualLeft = false;
+        this.virtualRight = false;
+        this.virtualJump = false;
+    }
+
+    _determinePlayerColor() {
+        let element = document.body;
+        let bgColor = 'rgba(0, 0, 0, 0)';
+        
+        while (element) {
+            const style = window.getComputedStyle(element);
+            bgColor = style.backgroundColor;
+            if (bgColor !== 'rgba(0, 0, 0, 0)' && bgColor !== 'transparent') {
+                break;
+            }
+            element = element.parentElement;
+        }
+
+        // If background is fully transparent (default web page), it renders as white
+        if (bgColor === 'rgba(0, 0, 0, 0)' || bgColor === 'transparent') {
+            return 0x000000; // Black stickman on white background
+        }
+
+        const rgbMatch = bgColor.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+        if (rgbMatch) {
+            const r = parseInt(rgbMatch[1], 10);
+            const g = parseInt(rgbMatch[2], 10);
+            const b = parseInt(rgbMatch[3], 10);
+            
+            // Perceived luminance formula
+            const luminance = 0.299 * r + 0.587 * g + 0.114 * b;
+            return luminance > 128 ? 0x000000 : 0xffffff;
+        }
+        
+        return 0x000000; // Default to black
     }
 
     /** Check if a collision pair involves the ground sensor and a non-sensor body */
@@ -105,11 +143,11 @@ export default class Player {
 
         // --- Horizontal movement (setVelocity for snappy control) ---
         let isMoving = false;
-        if (this.keys.A.isDown) {
+        if (this.keys.A.isDown || this.virtualLeft) {
             this.gameObject.setVelocityX(-this.MOVE_SPEED * speedMultiplier);
             this.sprite.setFlipX(true);
             isMoving = true;
-        } else if (this.keys.D.isDown) {
+        } else if (this.keys.D.isDown || this.virtualRight) {
             this.gameObject.setVelocityX(this.MOVE_SPEED * speedMultiplier);
             this.sprite.setFlipX(false);
             isMoving = true;
@@ -119,7 +157,7 @@ export default class Player {
         }
 
         // --- Jump (instant velocity, only when grounded) ---
-        if (this.keys.W.isDown && this.isGrounded) {
+        if ((this.keys.W.isDown || this.virtualJump) && this.isGrounded) {
             this.gameObject.setVelocityY(this.JUMP_VELOCITY);
             this.scene.soundClick.play(); // Use click sound for jump
         }
@@ -134,14 +172,10 @@ export default class Player {
                 this.sprite.stop();
             }
         } else if (isMoving) {
-            if (this.sprite.anims.currentAnim?.key !== 'run') {
-                this.sprite.play('run');
-            }
+            this.sprite.play('run', true);
             this.sprite.anims.timeScale = Math.max(0.1, Math.abs(velocity.x) / this.MOVE_SPEED) * this.ANIM_SPEED_MULT;
         } else {
-            if (this.sprite.anims.currentAnim?.key !== 'idle') {
-                this.sprite.play('idle');
-            }
+            this.sprite.play('idle', true);
             this.sprite.anims.timeScale = 1;
         }
     }

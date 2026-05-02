@@ -6,9 +6,34 @@ import OverlayScene from '../scenes/OverlayScene.js';
 window.decomp = decomp;
 
 let gameInstance = null;
+let isStarting = false;
 
-export function startGame() {
-    if (gameInstance) return; // Already running
+export async function startGame() {
+    if (gameInstance || isStarting) return; // Already running or starting
+    isStarting = true;
+
+    // Capture the clean screen before injecting the game UI
+    try {
+        const response = await new Promise((resolve) => {
+            chrome.runtime.sendMessage({ action: 'capture-screen' }, resolve);
+        });
+        
+        if (response && response.dataUrl) {
+            const img = new Image();
+            img.src = response.dataUrl;
+            await new Promise((resolve) => {
+                img.onload = resolve;
+                img.onerror = resolve; // Continue even if it fails
+            });
+            window.__stickmanScreenshotImage = img;
+        } else {
+            console.warn("[StickmanFight] Screen capture failed:", response?.error);
+            window.__stickmanScreenshotImage = null;
+        }
+    } catch (err) {
+        console.warn("[StickmanFight] Error capturing screen:", err);
+        window.__stickmanScreenshotImage = null;
+    }
 
     // Create a host element for Shadow DOM isolation
     const host = document.createElement('div');
@@ -21,6 +46,10 @@ export function startGame() {
         height: 100vh;
         z-index: 2147483647;
         pointer-events: auto;
+        touch-action: none;
+        user-select: none;
+        -webkit-user-select: none;
+        -webkit-touch-callout: none;
     `;
     document.body.appendChild(host);
 
@@ -75,12 +104,13 @@ export function startGame() {
             default: 'matter',
             matter: {
                 gravity: { y: 1 },
-                debug: false
+                debug: true
             }
         }
     };
 
     gameInstance = new Phaser.Game(config);
+    isStarting = false;
 }
 
 export function stopGame() {
@@ -95,4 +125,7 @@ export function stopGame() {
     // Restore scroll
     document.body.style.overflow = document.body.dataset.stickmanPrevOverflow || '';
     delete document.body.dataset.stickmanPrevOverflow;
+    
+    window.__stickmanScreenshotImage = null;
+    isStarting = false;
 }
