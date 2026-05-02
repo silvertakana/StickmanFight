@@ -1,6 +1,5 @@
 // src/entities/DOMBlock.js
-// An invisible static Matter.js body aligned to a real DOM element.
-// When destroyed, it screenshots the element and becomes a dynamic falling sprite.
+import html2canvas from 'html2canvas';
 
 export default class DOMBlock {
     constructor(scene, domElement, rect) {
@@ -11,7 +10,6 @@ export default class DOMBlock {
         this.hits = 0;
         this.maxHits = Math.max(1, Math.ceil((rect.width * rect.height) / 20000));
 
-        // Create invisible static physics body at the element's screen position
         const centerX = rect.left + rect.width / 2;
         const centerY = rect.top + rect.height / 2;
 
@@ -21,7 +19,6 @@ export default class DOMBlock {
             chamfer: { radius: Math.min(rect.width, rect.height) * 0.05 }
         });
 
-        // Store reference on the body for collision lookups
         this.body.gameObjectClass = this;
         this.body.domElement = domElement;
     }
@@ -31,10 +28,8 @@ export default class DOMBlock {
         this.hits++;
 
         if (this.hits >= this.maxHits) {
-            // Phase 4 will replace this with the screenshot pipeline
             this.fallOut();
         } else {
-            // Visual feedback: briefly highlight the real DOM element
             const el = this.domElement;
             const prevOutline = el.style.outline;
             el.style.outline = '3px solid red';
@@ -42,21 +37,75 @@ export default class DOMBlock {
         }
     }
 
-    fallOut() {
+    async fallOut() {
         if (this.isFallen) return;
         this.isFallen = true;
 
-        // For now (before Phase 4): just hide the element and remove body
-        this.domElement.style.opacity = '0.3';
+        const rect = this.rect;
+        const centerX = rect.left + rect.width / 2;
+        const centerY = rect.top + rect.height / 2;
+
+        // Remove the invisible static body
         this.scene.matter.world.remove(this.body);
 
-        // Phase 4 will: screenshot → texture → dynamic sprite
+        let textureKey = `dom-capture-${Date.now()}-${Math.random()}`;
+
+        try {
+            // Screenshot the real DOM element
+            const canvas = await html2canvas(this.domElement, {
+                backgroundColor: null,        // Transparent background
+                logging: false,
+                useCORS: true,                // Attempt cross-origin images
+                scale: 1,                     // 1:1 pixel ratio for performance
+                width: rect.width,
+                height: rect.height
+            });
+
+            // Add the canvas as a Phaser texture
+            this.scene.textures.addCanvas(textureKey, canvas);
+        } catch (err) {
+            console.warn('[StickmanFight] html2canvas failed, using fallback', err);
+            // Fallback: create a grey rectangle texture
+            const fallback = document.createElement('canvas');
+            fallback.width = rect.width;
+            fallback.height = rect.height;
+            const ctx = fallback.getContext('2d');
+            ctx.fillStyle = '#666';
+            ctx.fillRect(0, 0, rect.width, rect.height);
+            this.scene.textures.addCanvas(textureKey, fallback);
+        }
+
+        // Hide the real DOM element
+        this.domElement.style.opacity = '0';
+        this.domElement.style.pointerEvents = 'none';
+
+        // Create a visible Phaser sprite with the screenshot
+        const sprite = this.scene.add.sprite(centerX, centerY, textureKey);
+        this.fallenSprite = this.scene.matter.add.gameObject(sprite, {
+            label: 'dom-block-fallen',
+            mass: (rect.width * rect.height) / 2000,
+            friction: 0.5,
+            restitution: 0.3,
+            chamfer: { radius: Math.min(rect.width, rect.height) * 0.05 }
+        });
+
+        // Give it a rotation kick and slight upward pop
+        const mass = this.fallenSprite.body.mass;
+        this.fallenSprite.setAngularVelocity((Math.random() - 0.5) * 0.08);
+        this.fallenSprite.applyForce({
+            x: (Math.random() - 0.5) * 0.015 * mass,
+            y: -0.008 * mass
+        });
     }
 
     destroy() {
         if (this.body) {
             this.scene.matter.world.remove(this.body);
             this.body = null;
+        }
+        if (this.fallenSprite) {
+            this.fallenSprite.destroy();
+            this.fallenSprite = null;
         }
     }
 }

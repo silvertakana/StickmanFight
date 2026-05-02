@@ -30,6 +30,10 @@ export default class OverlayScene extends Phaser.Scene {
         this.load.audio('click',
             resolveAssetPath('assets/audio/sfx/interface/Audio/click_001.ogg')
         );
+        this.load.audio('impact-light',
+            resolveAssetPath('assets/audio/sfx/impact/Audio/impactGeneric_light_000.ogg'));
+        this.load.audio('shatter',
+            resolveAssetPath('assets/audio/sfx/interface/Audio/bong_001.ogg'));
     }
 
     create() {
@@ -64,6 +68,8 @@ export default class OverlayScene extends Phaser.Scene {
 
         // Sound (for jump)
         this.soundClick = this.sound.add('click', { volume: 0.4 });
+        this.soundImpactLight = this.sound.add('impact-light', { volume: 0.3 });
+        this.soundShatter = this.sound.add('shatter', { volume: 0.6 });
 
         // Spawn player at bottom-left
         this.player = new Player(this, 100, height - 100);
@@ -85,6 +91,11 @@ export default class OverlayScene extends Phaser.Scene {
                         if (speed > 6 || collision.depth > 3) {
                             if (staticBody.gameObjectClass) {
                                 staticBody.gameObjectClass.takeHit();
+                                this.soundShatter.play();
+                            }
+                        } else if (speed > 2) {
+                            if (!this.soundImpactLight.isPlaying) {
+                                this.soundImpactLight.play();
                             }
                         }
                     }
