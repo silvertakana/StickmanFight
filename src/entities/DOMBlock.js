@@ -38,22 +38,147 @@ export default class DOMBlock {
         this.projectileHits = (this.projectileHits || 0) + 1;
 
         if (this.projectileHits >= 3) {
-            this.destroy();
+            this._dissolveAndDestroy();
             return;
         }
 
         if (this.fallenSprite) {
-            if (this.projectileHits === 1) {
-                this.fallenSprite.setTint(0xaaaaaa);
-            } else if (this.projectileHits === 2) {
-                this.fallenSprite.setTint(0x555555);
-            }
+            this._applyNoiseOverlay(this.projectileHits);
         }
 
         if (!this.isFallenButProcessed) {
             this.isFallen = true;
             this.fallOut();
         }
+    }
+
+    /**
+     * Applies static TV-noise grain over the sprite's canvas texture.
+     * @param {number} hitLevel - 1 or 2, controls noise density
+     */
+    _applyNoiseOverlay(hitLevel) {
+        if (!this.textureKey || !this.scene || !this.scene.textures) return;
+        const tex = this.scene.textures.get(this.textureKey);
+        if (!tex) return;
+        const source = tex.getSourceImage();
+        if (!(source instanceof HTMLCanvasElement)) return;
+
+        const w = source.width;
+        const h = source.height;
+        if (w === 0 || h === 0) return;
+
+        const ctx = source.getContext('2d', { willReadFrequently: true });
+        const imageData = ctx.getImageData(0, 0, w, h);
+        const data = imageData.data;
+
+        // Noise density: hit 1 = 30% of pixels, hit 2 = 60%
+        const density = hitLevel === 1 ? 0.30 : 0.60;
+        // Noise opacity: hit 1 = semi-transparent, hit 2 = more opaque
+        const noiseAlpha = hitLevel === 1 ? 0.45 : 0.75;
+
+        for (let i = 0; i < data.length; i += 4) {
+            // Skip fully transparent pixels (preserve shape)
+            if (data[i + 3] < 10) continue;
+
+            if (Math.random() < density) {
+                // Random grayscale noise value
+                const noise = Math.random() * 255;
+                // Blend noise with existing pixel
+                const blend = noiseAlpha;
+                const invBlend = 1 - blend;
+                data[i]     = Math.round(data[i]     * invBlend + noise * blend); // R
+                data[i + 1] = Math.round(data[i + 1] * invBlend + noise * blend); // G
+                data[i + 2] = Math.round(data[i + 2] * invBlend + noise * blend); // B
+            }
+        }
+
+        ctx.putImageData(imageData, 0, 0);
+        tex.update();
+    }
+
+    /**
+     * Dissolve effect: rapidly animate noise grain to 100% coverage
+     * while fading alpha, then destroy.
+     */
+    _dissolveAndDestroy() {
+        if (!this.fallenSprite || !this.scene) {
+            this.destroy();
+            return;
+        }
+
+        const duration = 600; // ms
+        const steps = 8;
+        const stepDelay = duration / steps;
+        let step = 0;
+
+        const dissolveTimer = this.scene.time.addEvent({
+            delay: stepDelay,
+            repeat: steps - 1,
+            callback: () => {
+                step++;
+                const progress = step / steps; // 0..1
+
+                // Intensify noise on the texture
+                this._applyDissolveNoise(progress);
+
+                // Fade out alpha
+                if (this.fallenSprite) {
+                    this.fallenSprite.setAlpha(1 - progress * 0.9);
+                }
+
+                // Final step: destroy
+                if (step >= steps) {
+                    this.destroy();
+                }
+            }
+        });
+        this._dissolveTimer = dissolveTimer;
+    }
+
+    /**
+     * Progressive dissolve noise — increases coverage and erases pixels.
+     * @param {number} progress - 0 to 1
+     */
+    _applyDissolveNoise(progress) {
+        if (!this.textureKey || !this.scene || !this.scene.textures) return;
+        const tex = this.scene.textures.get(this.textureKey);
+        if (!tex) return;
+        const source = tex.getSourceImage();
+        if (!(source instanceof HTMLCanvasElement)) return;
+
+        const w = source.width;
+        const h = source.height;
+        if (w === 0 || h === 0) return;
+
+        const ctx = source.getContext('2d', { willReadFrequently: true });
+        const imageData = ctx.getImageData(0, 0, w, h);
+        const data = imageData.data;
+
+        // Density ramps from 50% to 100%, noise dominance increases
+        const density = 0.5 + progress * 0.5;
+        const eraseChance = progress * 0.4; // Late-stage pixels get erased entirely
+
+        for (let i = 0; i < data.length; i += 4) {
+            if (data[i + 3] < 10) continue;
+
+            if (Math.random() < density) {
+                if (Math.random() < eraseChance) {
+                    // Erase pixel (dissolve away)
+                    data[i + 3] = 0;
+                } else {
+                    // Harsh static noise
+                    const noise = Math.random() > 0.5 ? 255 : 0; // B&W static
+                    data[i]     = noise;
+                    data[i + 1] = noise;
+                    data[i + 2] = noise;
+                    // Slightly reduce alpha for shimmer effect
+                    data[i + 3] = Math.max(0, data[i + 3] - Math.floor(Math.random() * 40 * progress));
+                }
+            }
+        }
+
+        ctx.putImageData(imageData, 0, 0);
+        tex.update();
     }
 
     fallOut(suppressKick = false) {
@@ -180,12 +305,9 @@ export default class DOMBlock {
         });
         this.fallenSprite.body.gameObjectClass = this;
 
-        // Apply existing tint if it was hit before falling
-        if (this.projectileHits === 1) {
-            this.fallenSprite.setTint(0xaaaaaa);
-        } else if (this.projectileHits === 2) {
-            this.fallenSprite.setTint(0x555555);
-        }
+        // Apply existing noise if it was hit before falling
+        // (noise is baked into the canvas texture, so it will carry over
+        // once the real texture loads and _applyNoiseOverlay is re-called)
 
         if (!suppressKick) {
             const mass = this.fallenSprite.body.mass;
@@ -221,6 +343,11 @@ export default class DOMBlock {
                         texCtx.clearRect(0, 0, texCanvas.width, texCanvas.height);
                         texCtx.drawImage(canvas, 0, 0, canvas.width, canvas.height, 0, 0, texCanvas.width, texCanvas.height);
                         tex.update();
+
+                        // Re-apply noise if hits occurred while the texture was loading
+                        if (this.projectileHits > 0 && this.projectileHits < 3) {
+                            this._applyNoiseOverlay(this.projectileHits);
+                        }
                     }
                 }
             }
@@ -232,6 +359,10 @@ export default class DOMBlock {
     }
 
     destroy() {
+        if (this._dissolveTimer) {
+            this._dissolveTimer.remove();
+            this._dissolveTimer = null;
+        }
         if (this.body && this.scene && this.scene.matter) {
             this.scene.matter.world.remove(this.body);
             this.body = null;

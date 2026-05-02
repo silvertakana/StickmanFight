@@ -483,6 +483,9 @@ export default class MainScene extends Phaser.Scene {
                     const dynamicBody = dynamicPart.parent || dynamicPart;
                     
                     if (staticBody.label === 'google-ui' && staticBody.isStatic && !dynamicBody.isStatic) {
+                        // Boss flying into static page elements should not damage them
+                        if (dynamicBody.label === 'bossBody') return;
+
                         const speed = Math.hypot(dynamicBody.velocity.x, dynamicBody.velocity.y);
                         // Avoid using Infinity for mass
                         const mass = dynamicBody.mass === Infinity ? 1 : dynamicBody.mass;

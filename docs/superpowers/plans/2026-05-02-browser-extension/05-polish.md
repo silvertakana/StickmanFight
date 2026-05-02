@@ -75,7 +75,7 @@ In `startGame()`, after creating the Shadow DOM container, add a visual indicato
 // Inside shadow DOM, add a small indicator badge
 const badge = document.createElement('div');
 badge.id = 'stickman-badge';
-badge.textContent = '⚔️ Stickman Fight — Alt+Shift+S to exit';
+badge.textContent = 'Stickman Fight — Alt+Shift+S to exit';
 badge.style.cssText = `
     position: fixed;
     top: 8px;

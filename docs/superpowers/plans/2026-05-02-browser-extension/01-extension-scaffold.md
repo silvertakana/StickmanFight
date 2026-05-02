@@ -236,7 +236,7 @@ git commit -m "feat: add content script with toggle message listener"
   </style>
 </head>
 <body>
-  <h1>⚔️ Stickman Fight</h1>
+  <h1>Stickman Fight</h1>
   <button id="toggle-btn">Start Game</button>
   <div class="status" id="status">Click to play on this page</div>
   <script src="popup.js"></script>

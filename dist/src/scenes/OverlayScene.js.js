@@ -168,6 +168,9 @@ export default class OverlayScene extends Phaser.Scene {
 
                 const checkHit = (staticBody, dynamicBody) => {
                     if (staticBody.label === 'dom-block' && staticBody.isStatic && !dynamicBody.isStatic) {
+                        // Boss flying into static page elements should not damage them
+                        if (dynamicBody.label === 'bossBody') return;
+
                         if (dynamicBody.label === 'projectile') {
                             if (staticBody.gameObjectClass && typeof staticBody.gameObjectClass.takeProjectileHit === 'function') {
                                 staticBody.gameObjectClass.takeProjectileHit();
@@ -355,6 +358,54 @@ export default class OverlayScene extends Phaser.Scene {
         });
     }
 
+    /**
+     * Samples the pre-captured screenshot (or body background) to determine
+     * whether the page center is light or dark. Returns 0–1 luminance.
+     */
+    _detectBackgroundLuminance() {
+        const img = window.__stickmanScreenshotImage;
+        if (img && img.naturalWidth) {
+            try {
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                canvas.width = img.naturalWidth;
+                canvas.height = img.naturalHeight;
+                ctx.drawImage(img, 0, 0);
+
+                // Sample a 60×60 region at the center of the viewport
+                const cx = Math.floor(canvas.width / 2);
+                const cy = Math.floor(canvas.height / 2);
+                const half = 30;
+                const sx = Math.max(0, cx - half);
+                const sy = Math.max(0, cy - half);
+                const sw = Math.min(half * 2, canvas.width - sx);
+                const sh = Math.min(half * 2, canvas.height - sy);
+                const imageData = ctx.getImageData(sx, sy, sw, sh);
+
+                let totalR = 0, totalG = 0, totalB = 0;
+                const px = imageData.data;
+                const count = px.length / 4;
+                for (let i = 0; i < px.length; i += 4) {
+                    totalR += px[i];
+                    totalG += px[i + 1];
+                    totalB += px[i + 2];
+                }
+                return (0.299 * (totalR / count) + 0.587 * (totalG / count) + 0.114 * (totalB / count)) / 255;
+            } catch (_) { /* CORS / tainted canvas — fall through */ }
+        }
+
+        // Fallback: read computed body background
+        const bodyBg = window.getComputedStyle(document.body).backgroundColor;
+        const match = bodyBg.match(/(\d+)/g);
+        if (match && match.length >= 3) {
+            const [r, g, b] = match.map(Number);
+            return (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+        }
+
+        // If everything fails, assume dark background
+        return 0.15;
+    }
+
     showEndGame(textStr) {
         if (this.isGameOver) return;
         this.isGameOver = true;
@@ -362,39 +413,33 @@ export default class OverlayScene extends Phaser.Scene {
         const width = this.scale.width;
         const height = this.scale.height;
 
-        const textColor = textStr === 'YOU WIN' ? '#4ade80' : '#f87171';
+        // Detect page background and pick a contrasting, muted text color
+        const luminance = this._detectBackgroundLuminance();
+        const isDark = luminance < 0.5;
+        const textColor  = isDark ? '#e8e4df' : '#1a1a2e';   // off-white / off-black
+        const shadowColor = isDark ? 'rgba(0,0,0,0.85)' : 'rgba(255,255,255,0.85)';
 
-        const textObj = this.add.text(width / 2, height / 2, '', {
+        const makeStyle = (align) => ({
             fontFamily: '"EB Garamond", serif',
             fontSize: '84px',
             fontStyle: 'normal',
             color: textColor,
             shadow: {
-                offsetX: 3,
-                offsetY: 3,
-                color: 'rgba(0,0,0,0.8)',
-                blur: 6,
+                offsetX: 2,
+                offsetY: 2,
+                color: shadowColor,
+                blur: 8,
                 stroke: false,
                 fill: true
             },
-            align: 'center'
-        }).setOrigin(0.5).setDepth(1000).setScrollFactor(0);
+            align
+        });
 
-        const cursorObj = this.add.text(width / 2, height / 2 - 5, '|', {
-            fontFamily: '"EB Garamond", serif',
-            fontSize: '84px',
-            fontStyle: 'normal',
-            color: textColor,
-            shadow: {
-                offsetX: 3,
-                offsetY: 3,
-                color: 'rgba(0,0,0,0.8)',
-                blur: 6,
-                stroke: false,
-                fill: true
-            },
-            align: 'left'
-        }).setOrigin(0, 0.5).setDepth(1000).setScrollFactor(0);
+        const textObj = this.add.text(width / 2, height / 2, '', makeStyle('center'))
+            .setOrigin(0.5).setDepth(1000).setScrollFactor(0);
+
+        const cursorObj = this.add.text(width / 2, height / 2 - 5, '|', makeStyle('left'))
+            .setOrigin(0, 0.5).setDepth(1000).setScrollFactor(0);
 
         let i = 0;
         let cursorVisible = true;

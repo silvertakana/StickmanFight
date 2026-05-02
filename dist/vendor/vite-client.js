@@ -833,7 +833,7 @@ const socketHost = `${"localhost" || importMetaUrl.hostname}:${hmrPort || import
 const directSocketHost = "localhost:3000/";
 const base = "/" || "/";
 const hmrTimeout = 30000;
-const wsToken = "fct0OZ8cOsU0";
+const wsToken = "8_5KLRrVjt7a";
 const isBundleMode = false;
 const forwardConsole = {"enabled":false,"unhandledErrors":false,"logLevels":[]};
 const transport = normalizeModuleRunnerTransport((() => {
