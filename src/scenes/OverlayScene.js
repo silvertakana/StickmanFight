@@ -12,11 +12,11 @@ export default class OverlayScene extends Phaser.Scene {
     preload() {
         // Load player sprites via extension-aware paths
         this.load.spritesheet('stickman-run',
-            resolveAssetPath('assets/sprites/stickman/StickmanPack/Run/thickRunSheet.png'),
+            resolveAssetPath('assets/sprites/StickmanPack/Run/Run.png'),
             { frameWidth: 64, frameHeight: 64 }
         );
         this.load.spritesheet('stickman-idle',
-            resolveAssetPath('assets/sprites/stickman/StickmanPack/Idle/thickIdleSheet.png'),
+            resolveAssetPath('assets/sprites/StickmanPack/Idle/Thin.png'),
             { frameWidth: 64, frameHeight: 64 }
         );
         this.load.image('stickman-jump-up',

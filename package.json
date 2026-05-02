@@ -1,6 +1,6 @@
 {
   "name": "stickmanfight",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "",
   "main": "index.js",
   "directories": {
@@ -25,6 +25,7 @@
   },
   "homepage": "https://github.com/silvertakana/StickmanFight#readme",
   "dependencies": {
+    "html2canvas": "^1.4.1",
     "phaser": "^4.1.0",
     "poly-decomp": "^0.3.0"
   },

@@ -10,8 +10,8 @@ export default class MainScene extends Phaser.Scene {
 
     preload() {
         // Load Stickman sprites (V0.1 Thick)
-        this.load.spritesheet('stickman-run', 'assets/sprites/stickman/StickmanPack/Run/thickRunSheet.png?v=5', { frameWidth: 64, frameHeight: 64 });
-        this.load.spritesheet('stickman-idle', 'assets/sprites/stickman/StickmanPack/Idle/thickIdleSheet.png?v=5', { frameWidth: 64, frameHeight: 64 });
+        this.load.spritesheet('stickman-run', 'assets/sprites/StickmanPack/Run/Run.png?v=5', { frameWidth: 64, frameHeight: 64 });
+        this.load.spritesheet('stickman-idle', 'assets/sprites/StickmanPack/Idle/Thin.png?v=5', { frameWidth: 64, frameHeight: 64 });
         
         // Load Thickened Jump frames (from V0.2)
         this.load.image('stickman-jump-up', 'assets/sprites/stickman/StickmanPack/Jump/JumpUp.png?v=5');
@@ -204,11 +204,13 @@ export default class MainScene extends Phaser.Scene {
                     const py = (path[j].y - offsetY) / resY;
                     minX = Math.min(minX, px);
                     minY = Math.min(minY, py);
-                    simplified.push(`${px} ${py}`);
+                    // Use toFixed to prevent massive precision strings
+                    simplified.push(`${px.toFixed(2)} ${py.toFixed(2)}`);
                 }
                 
                 if (simplified.length >= 3) {
-                    shapeConfig = { type: 'fromVerts', verts: simplified.join(' ') };
+                    const svgPath = 'M ' + simplified[0] + ' L ' + simplified.slice(1).join(' L ') + ' Z';
+                    shapeConfig = { type: 'fromVerts', verts: svgPath };
                     origMinX = minX;
                     origMinY = minY;
                 }
@@ -490,7 +492,11 @@ export default class MainScene extends Phaser.Scene {
                         // 'pressed too hard' -> deep collision penetration (depth > 2)
                         if (speed > 8 || momentum > 8 || collision.depth > 3) {
                             if (staticBody.gameObjectClass && typeof staticBody.gameObjectClass.takeHit === 'function') {
-                                staticBody.gameObjectClass.takeHit();
+                                // Defer the hit resolution to avoid removing physics bodies while Matter.js 
+                                // is still iterating through the active collision pairs, which causes random crashes.
+                                this.time.delayedCall(0, () => {
+                                    if (staticBody.gameObjectClass) staticBody.gameObjectClass.takeHit();
+                                });
                                 this.soundShatter.play();
                             }
                         } else if (speed > 2) {

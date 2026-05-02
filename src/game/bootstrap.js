@@ -5,12 +5,9 @@ import OverlayScene from '../scenes/OverlayScene.js';
 
 window.decomp = decomp;
 
-let gameInstance = null;
-let isStarting = false;
-
 export async function startGame() {
-    if (gameInstance || isStarting) return; // Already running or starting
-    isStarting = true;
+    if (window.__stickmanGameInstance || window.__stickmanIsStarting) return; // Already running or starting
+    window.__stickmanIsStarting = true;
 
     // Capture the clean screen before injecting the game UI
     try {
@@ -109,15 +106,15 @@ export async function startGame() {
         }
     };
 
-    gameInstance = new Phaser.Game(config);
-    isStarting = false;
+    window.__stickmanGameInstance = new Phaser.Game(config);
+    window.__stickmanIsStarting = false;
 }
 
 export function stopGame() {
-    if (!gameInstance) return;
+    if (!window.__stickmanGameInstance) return;
     
-    gameInstance.destroy(true);
-    gameInstance = null;
+    window.__stickmanGameInstance.destroy(true);
+    window.__stickmanGameInstance = null;
 
     const host = document.getElementById('stickman-fight-host');
     if (host) host.remove();
@@ -127,5 +124,5 @@ export function stopGame() {
     delete document.body.dataset.stickmanPrevOverflow;
     
     window.__stickmanScreenshotImage = null;
-    isStarting = false;
+    window.__stickmanIsStarting = false;
 }
