@@ -1,8 +1,4 @@
-const html2canvas = !__vite__cjsImport0_html2canvas.__esModule ? __vite__cjsImport0_html2canvas : __vite__cjsImport0_html2canvas.default;// src/entities/DOMBlock.js
-import __vite__cjsImport0_html2canvas from "/vendor/.vite-deps-html2canvas.js__v--b7a19eee.js";
-
-// Global queue to prevent html2canvas from crashing the browser by running in parallel
-let renderQueue = Promise.resolve();
+import { toCanvas } from "/vendor/.vite-deps-html-to-image.js__v--95411efd.js";
 
 export default class DOMBlock {
     constructor(scene, domElement, rect) {
@@ -24,10 +20,6 @@ export default class DOMBlock {
 
         this.body.gameObjectClass = this;
         this.body.domElement = domElement;
-
-        // Make the block permanently visible for debugging
-        this.domElement.style.outline = '2px dashed #00ff00';
-        this.domElement.style.outlineOffset = '-2px';
     }
 
     takeHit() {
@@ -35,18 +27,12 @@ export default class DOMBlock {
         this.hits++;
 
         if (this.hits >= this.maxHits) {
-            this.isFallen = true; // Mark instantly
+            this.isFallen = true;
             this.fallOut();
-        } else {
-            const el = this.domElement;
-            el.style.outline = '3px solid red';
-            setTimeout(() => { 
-                if (!this.isFallen) el.style.outline = '2px dashed #00ff00'; 
-            }, 150);
         }
     }
 
-    fallOut() {
+    fallOut(suppressKick = false) {
         if (this.isFallenButProcessed) return;
         this.isFallenButProcessed = true;
 
@@ -56,6 +42,11 @@ export default class DOMBlock {
 
         // Remove the invisible static body outside the physics step
         if (this.scene && this.scene.time) {
+            if (this.body) {
+                this.body.isSensor = true;
+                this.body.collisionFilter.mask = 0;
+                this.body.label = 'dom-block-removed';
+            }
             this.scene.time.delayedCall(0, () => {
                 if (this.body && this.scene.matter && this.scene.matter.world) {
                     this.scene.matter.world.remove(this.body);
@@ -63,71 +54,105 @@ export default class DOMBlock {
             });
         }
 
-        // Add to the global queue so we only render one html2canvas at a time
-        renderQueue = renderQueue.then(async () => {
-            const oldOutline = this.domElement.style.outline;
-            this.domElement.style.outline = 'none';
+        this.domElement.style.outline = 'none';
 
-            let canvas = null;
-            try {
-                canvas = await html2canvas(this.domElement, {
-                    backgroundColor: null,
-                    scale: 1, // Keep scale 1 to maximize performance and prevent OOM
-                    logging: false,
-                    useCORS: true
-                });
-            } catch(e) {
-                console.warn('[StickmanFight] html2canvas error:', e);
-                this.domElement.style.outline = oldOutline;
+        // Use html-to-image for blazing fast, perfectly isolated off-screen rendering
+        // Use html-to-image for blazing fast, perfectly isolated off-screen rendering
+        const texturePromise = toCanvas(this.domElement, {
+            width: rect.width,
+            height: rect.height,
+            pixelRatio: window.devicePixelRatio || 1, // Let it use high-res scaling to prevent internal SVG cropping
+            skipFonts: false, // Keep fonts so text looks correct
+            style: {
+                // Force the clone to perfectly match the physics boundaries
+                // and ignore any layout offsets or transforms from the original page
+                margin: '0',
+                top: '0',
+                left: '0',
+                width: rect.width + 'px',
+                height: rect.height + 'px',
+                boxSizing: 'border-box',
+                transform: 'none'
             }
-
-            // Hide the real DOM element
+        }).then(canvas => {
+            // Hide element ONLY AFTER the off-screen capture is fully complete!
+            // This prevents the user from seeing any flicker or missing frames.
             this.domElement.style.opacity = '0';
             this.domElement.style.pointerEvents = 'none';
 
-            const textureKey = `dom-capture-${Date.now()}-${Math.random()}`;
-            if (canvas && this.scene && this.scene.textures) {
-                this.scene.textures.addCanvas(textureKey, canvas);
-            } else {
-                // Fallback blank box if html2canvas fails
-                canvas = document.createElement('canvas');
-                canvas.width = rect.width;
-                canvas.height = rect.height;
-                const ctx = canvas.getContext('2d');
-                ctx.fillStyle = 'rgba(100, 100, 100, 0.5)';
-                ctx.fillRect(0, 0, rect.width, rect.height);
-                this.scene.textures.addCanvas(textureKey, canvas);
-            }
-
-            // If the scene is destroyed while we were awaiting html2canvas, abort
-            if (!this.scene || !this.scene.add) return;
-
-            const sprite = this.scene.add.sprite(centerX, centerY, textureKey);
+            // Ensure canvas is optimized for our physics engine's rapid readbacks
+            const optimizedCanvas = document.createElement('canvas');
+            optimizedCanvas.width = rect.width;
+            optimizedCanvas.height = rect.height;
+            const ctx = optimizedCanvas.getContext('2d', { willReadFrequently: true });
             
-            // Adjust scale if canvas size differs from rect (e.g. padding/margins)
-            if (canvas && canvas.width !== 0 && canvas.width !== rect.width) {
-                 sprite.setScale(rect.width / canvas.width);
-            }
+            // Draw the high-res generated canvas onto our 1x optimized canvas, 
+            // perfectly downscaling it to our exact physics rect boundaries.
+            ctx.drawImage(canvas, 0, 0, rect.width, rect.height);
 
-            this.fallenSprite = this.scene.matter.add.gameObject(sprite, {
-                label: 'dom-block-fallen',
-                mass: (rect.width * rect.height) / 2000,
-                friction: 0.5,
-                restitution: 0.3,
-                chamfer: { radius: Math.min(rect.width, rect.height) * 0.05 }
-            });
+            return optimizedCanvas;
+        });
 
+        // Create a visible Phaser sprite IMMEDIATELY with an invisible placeholder
+        const textureKey = `dom-capture-${Date.now()}-${Math.random()}`;
+        const fallback = document.createElement('canvas');
+        fallback.width = rect.width;
+        fallback.height = rect.height;
+        const ctx = fallback.getContext('2d', { willReadFrequently: true });
+        ctx.clearRect(0, 0, rect.width, rect.height);
+        this.scene.textures.addCanvas(textureKey, fallback);
+
+        const sprite = this.scene.add.sprite(centerX, centerY, textureKey);
+        this.fallenSprite = this.scene.matter.add.gameObject(sprite, {
+            label: 'dom-block-fallen',
+            mass: (rect.width * rect.height) / 2000,
+            friction: 0.5,
+            restitution: 0.3,
+            chamfer: { radius: Math.min(rect.width, rect.height) * 0.05 }
+        });
+
+        if (!suppressKick) {
             const mass = this.fallenSprite.body.mass;
             this.fallenSprite.setAngularVelocity((Math.random() - 0.5) * 0.08);
             this.fallenSprite.applyForce({
                 x: (Math.random() - 0.5) * 0.015 * mass,
                 y: -0.008 * mass
             });
-            
-            // Small pause between renders to let the browser breathe/render frames
-            return new Promise(resolve => setTimeout(resolve, 10));
+        }
+
+        texturePromise.then((canvas) => {
+            if (canvas && canvas.width > 0 && canvas.height > 0) {
+                const checkCtx = canvas.getContext('2d', { willReadFrequently: true });
+                let hasPixels = true; 
+                
+                try {
+                    const imgData = checkCtx.getImageData(0, 0, canvas.width, canvas.height).data;
+                    hasPixels = false;
+                    for (let i = 3; i < imgData.length; i += 4) {
+                        if (imgData[i] > 10) { hasPixels = true; break; }
+                    }
+                } catch (e) {
+                    console.warn('[StickmanFight] Tainted canvas, using texture anyway');
+                }
+
+                if (!hasPixels) return;
+
+                if (this.scene && this.scene.textures) {
+                    const tex = this.scene.textures.get(textureKey);
+                    if (tex && tex.getSourceImage() instanceof HTMLCanvasElement) {
+                        const texCanvas = tex.getSourceImage();
+                        const texCtx = texCanvas.getContext('2d', { willReadFrequently: true });
+                        texCtx.clearRect(0, 0, texCanvas.width, texCanvas.height);
+                        texCtx.drawImage(canvas, 0, 0, canvas.width, canvas.height, 0, 0, texCanvas.width, texCanvas.height);
+                        tex.update();
+                    }
+                }
+            }
         }).catch(err => {
-            console.error('[StickmanFight] Render queue error', err);
+            // If html-to-image fails, at least hide the element so the player can interact
+            this.domElement.style.opacity = '0';
+            this.domElement.style.pointerEvents = 'none';
+            console.error('[StickmanFight] html-to-image capture error:', err);
         });
     }
 

@@ -1,6 +1,7 @@
 // src/scenes/OverlayScene.js
 import Phaser from 'phaser';
 import Player from '../entities/Player.js';
+import Boss from '../entities/Boss.js';
 import { resolveAssetPath } from '../game/assetLoader.js';
 import DOMScanner from '../scanner/DOMScanner.js';
 
@@ -12,11 +13,11 @@ export default class OverlayScene extends Phaser.Scene {
     preload() {
         // Load player sprites via extension-aware paths
         this.load.spritesheet('stickman-run',
-            resolveAssetPath('assets/sprites/StickmanPack/Run/Run.png'),
+            resolveAssetPath('assets/sprites/stickman/StickmanPack/Run/thickRunSheet.png?v=7'),
             { frameWidth: 64, frameHeight: 64 }
         );
         this.load.spritesheet('stickman-idle',
-            resolveAssetPath('assets/sprites/StickmanPack/Idle/Thin.png'),
+            resolveAssetPath('assets/sprites/stickman/StickmanPack/Idle/thickIdleSheet.png?v=7'),
             { frameWidth: 64, frameHeight: 64 }
         );
         this.load.image('stickman-jump-up',
@@ -34,6 +35,19 @@ export default class OverlayScene extends Phaser.Scene {
             resolveAssetPath('assets/audio/sfx/impact/Audio/impactGeneric_light_000.ogg'));
         this.load.audio('shatter',
             resolveAssetPath('assets/audio/sfx/interface/Audio/bong_001.ogg'));
+
+        // Load Boss frames
+        this.load.image('boss-frame-1', resolveAssetPath('assets/sprites/enemy/boss_frame1.png'));
+        this.load.image('boss-frame-2', resolveAssetPath('assets/sprites/enemy/boss_frame2.png'));
+        this.load.image('boss-frame-3', resolveAssetPath('assets/sprites/enemy/boss_frame3.png'));
+        this.load.image('boss-frame-4', resolveAssetPath('assets/sprites/enemy/boss_frame4.png'));
+        
+        // Load Impact Heavy
+        this.load.audio('impact-heavy', resolveAssetPath('assets/audio/sfx/impact/Audio/impactBell_heavy_000.ogg'));
+
+        // Load Background Music
+        this.load.audio('bgm-soft', resolveAssetPath('assets/audio/songs/song_soft.wav'));
+        this.load.audio('bgm-triangle', resolveAssetPath('assets/audio/songs/song_triangle.wav'));
     }
 
     create() {
@@ -66,13 +80,45 @@ export default class OverlayScene extends Phaser.Scene {
             frameRate: 10, repeat: -1
         });
 
+        // Boss Animation
+        this.anims.create({
+            key: 'boss-idle',
+            frames: [
+                { key: 'boss-frame-1' },
+                { key: 'boss-frame-2' },
+                { key: 'boss-frame-3' },
+                { key: 'boss-frame-4' }
+            ],
+            frameRate: 6,
+            repeat: -1
+        });
+
         // Sound (for jump)
         this.soundClick = this.sound.add('click', { volume: 0.4 });
         this.soundImpactLight = this.sound.add('impact-light', { volume: 0.3 });
+        this.soundImpactHeavy = this.sound.add('impact-heavy', { volume: 0.5 });
         this.soundShatter = this.sound.add('shatter', { volume: 0.6 });
 
         // Spawn player at bottom-left
         this.player = new Player(this, 100, height - 100);
+
+        // Spawn boss
+        this.boss = new Boss(this, width - 150, 150);
+        console.log('[StickmanFight] Boss spawned at', width - 150, 150);
+
+        // ===== BACKGROUND MUSIC =====
+        this.bgmSoft = this.sound.add('bgm-soft', { volume: 0.2 });
+        this.bgmTriangle = this.sound.add('bgm-triangle', { volume: 0.2 });
+
+        this.bgmSoft.on('complete', () => {
+            this.bgmTriangle.play();
+        });
+        this.bgmTriangle.on('complete', () => {
+            this.bgmSoft.play();
+        });
+
+        // Start the first track
+        this.bgmSoft.play();
 
         // --- Touch Controls ---
         // Enable multi-touch so Player 1 and Player 2 can interact simultaneously
@@ -114,6 +160,28 @@ export default class OverlayScene extends Phaser.Scene {
                             if (!this.soundImpactLight.isPlaying) {
                                 this.soundImpactLight.play();
                             }
+                        }
+                    } else if (staticBody.label === 'bossBody' || dynamicBody.label === 'bossBody') {
+                        // Boss takes damage from fast moving objects
+                        const bossBody = staticBody.label === 'bossBody' ? staticBody : dynamicBody;
+                        const otherBody = staticBody.label === 'bossBody' ? dynamicBody : staticBody;
+                        
+                        if (!otherBody.isStatic && otherBody.label === 'dom-block-fallen') {
+                            const speed = Math.hypot(otherBody.velocity.x, otherBody.velocity.y);
+                            if (speed > 8) {
+                                // Boss no longer takes damage from physics objects to prevent dying
+                                // if (this.boss) this.boss.takeHit(25);
+                                if (!this.soundImpactHeavy.isPlaying) {
+                                    this.soundImpactHeavy.play();
+                                }
+                            }
+                        }
+                    } else if (staticBody.label === 'player' || dynamicBody.label === 'player') {
+                        const playerBody = staticBody.label === 'player' ? staticBody : dynamicBody;
+                        const otherBody = staticBody.label === 'player' ? dynamicBody : staticBody;
+                        
+                        if (otherBody.label === 'projectile') {
+                            console.log('Player hit by projectile!');
                         }
                     }
                 };
@@ -237,5 +305,8 @@ export default class OverlayScene extends Phaser.Scene {
 
     update(time, delta) {
         this.player.update();
+        if (this.boss) {
+            this.boss.update(time, this.player);
+        }
     }
 }

@@ -1,10 +1,4 @@
-import html2canvas from 'html2canvas';
-
-/** Tags to strip during html2canvas capture to prevent CSP/cloning crashes */
-const HTML2CANVAS_IGNORED_TAGS = new Set([
-    'IFRAME', 'SCRIPT', 'NOSCRIPT', 'VIDEO', 'SVG', 'PATH',
-    'FOREIGNOBJECT', 'OBJECT', 'EMBED'
-]);
+import { toCanvas } from 'html-to-image';
 
 export default class DOMBlock {
     constructor(scene, domElement, rect) {
@@ -62,97 +56,50 @@ export default class DOMBlock {
 
         this.domElement.style.outline = 'none';
 
-        // Check if the element contains complex tags that html2canvas struggles with
-        const complexTags = ['SVG', 'IFRAME', 'EMBED', 'OBJECT', 'VIDEO', 'CANVAS'];
-        const isComplex = complexTags.includes(this.domElement.tagName.toUpperCase()) ||
-                          complexTags.some(tag => this.domElement.querySelector(tag) !== null);
-
-        let texturePromise;
-
-        if (isComplex) {
-            // HYBRID FALLBACK: Native Viewport Capture
-            texturePromise = new Promise((resolve, reject) => {
-                // Get fresh viewport coordinates in case the user scrolled
-                const viewportRect = this.domElement.getBoundingClientRect();
-                
-                // Hide element AFTER getting rect, but BEFORE capture
-                chrome.runtime.sendMessage({ action: 'capture-screen' }, (response) => {
-                    // Hide immediately after capture is taken by the background script!
-                    this.domElement.style.opacity = '0';
-                    this.domElement.style.pointerEvents = 'none';
-
-                    if (chrome.runtime.lastError || !response || !response.dataUrl) {
-                        return reject(new Error('Native capture failed'));
-                    }
-
-                    const img = new Image();
-                    img.onload = () => {
-                        const cropCanvas = document.createElement('canvas');
-                        cropCanvas.width = rect.width;
-                        cropCanvas.height = rect.height;
-                        const cropCtx = cropCanvas.getContext('2d');
-                        
-                        // Account for Retina displays (native capture scales up)
-                        const dpr = window.devicePixelRatio || 1;
-                        
-                        // Crop the exact element from the full screen capture
-                        cropCtx.drawImage(
-                            img,
-                            viewportRect.left * dpr,
-                            viewportRect.top * dpr,
-                            viewportRect.width * dpr,
-                            viewportRect.height * dpr,
-                            0, 0, rect.width, rect.height
-                        );
-                        resolve(cropCanvas);
-                    };
-                    img.onerror = () => reject(new Error('Image load failed'));
-                    img.src = response.dataUrl;
-                });
-            });
-        } else {
-            // STANDARD PATH: html2canvas
-            this.domElement.classList.add('stickman-html2canvas-target');
+        // Use html-to-image for blazing fast, perfectly isolated off-screen rendering
+        // Use html-to-image for blazing fast, perfectly isolated off-screen rendering
+        const texturePromise = toCanvas(this.domElement, {
+            width: rect.width,
+            height: rect.height,
+            pixelRatio: window.devicePixelRatio || 1, // Let it use high-res scaling to prevent internal SVG cropping
+            skipFonts: false, // Keep fonts so text looks correct
+            style: {
+                // Force the clone to perfectly match the physics boundaries
+                // and ignore any layout offsets or transforms from the original page
+                margin: '0',
+                top: '0',
+                left: '0',
+                width: rect.width + 'px',
+                height: rect.height + 'px',
+                boxSizing: 'border-box',
+                transform: 'none'
+            }
+        }).then(canvas => {
+            // Hide element ONLY AFTER the off-screen capture is fully complete!
+            // This prevents the user from seeing any flicker or missing frames.
             this.domElement.style.opacity = '0';
             this.domElement.style.pointerEvents = 'none';
 
-            texturePromise = html2canvas(this.domElement, {
-                backgroundColor: null,
-                scale: 1,
-                width: rect.width,
-                height: rect.height,
-                logging: false,
-                useCORS: true,
-                imageTimeout: 150,
-                foreignObjectRendering: true,
-                onclone: (clonedDoc) => {
-                    const clonedEls = clonedDoc.querySelectorAll('.stickman-html2canvas-target');
-                    for (const el of clonedEls) {
-                        el.style.opacity = '1';
-                        el.classList.remove('stickman-html2canvas-target');
-                    }
-                },
-                ignoreElements: (node) => {
-                    if (!node || !node.tagName) return false;
-                    const tag = node.tagName.toUpperCase();
-                    if (HTML2CANVAS_IGNORED_TAGS.has(tag)) return true;
-                    if (tag === 'LINK') {
-                        const rel = node.getAttribute('rel');
-                        return !rel || rel.toLowerCase() !== 'stylesheet';
-                    }
-                    return false;
-                }
-            });
-        }
+            // Ensure canvas is optimized for our physics engine's rapid readbacks
+            const optimizedCanvas = document.createElement('canvas');
+            optimizedCanvas.width = rect.width;
+            optimizedCanvas.height = rect.height;
+            const ctx = optimizedCanvas.getContext('2d', { willReadFrequently: true });
+            
+            // Draw the high-res generated canvas onto our 1x optimized canvas, 
+            // perfectly downscaling it to our exact physics rect boundaries.
+            ctx.drawImage(canvas, 0, 0, rect.width, rect.height);
 
-        // Create a visible Phaser sprite IMMEDIATELY with a placeholder
+            return optimizedCanvas;
+        });
+
+        // Create a visible Phaser sprite IMMEDIATELY with an invisible placeholder
         const textureKey = `dom-capture-${Date.now()}-${Math.random()}`;
         const fallback = document.createElement('canvas');
         fallback.width = rect.width;
         fallback.height = rect.height;
-        const ctx = fallback.getContext('2d');
-        ctx.fillStyle = 'rgba(100, 100, 100, 0.5)';
-        ctx.fillRect(0, 0, rect.width, rect.height);
+        const ctx = fallback.getContext('2d', { willReadFrequently: true });
+        ctx.clearRect(0, 0, rect.width, rect.height);
         this.scene.textures.addCanvas(textureKey, fallback);
 
         const sprite = this.scene.add.sprite(centerX, centerY, textureKey);
@@ -174,10 +121,8 @@ export default class DOMBlock {
         }
 
         texturePromise.then((canvas) => {
-            this.domElement.classList.remove('stickman-html2canvas-target');
-            
             if (canvas && canvas.width > 0 && canvas.height > 0) {
-                const checkCtx = canvas.getContext('2d');
+                const checkCtx = canvas.getContext('2d', { willReadFrequently: true });
                 let hasPixels = true; 
                 
                 try {
@@ -187,7 +132,7 @@ export default class DOMBlock {
                         if (imgData[i] > 10) { hasPixels = true; break; }
                     }
                 } catch (e) {
-                    console.warn('[StickmanFight] Tainted canvas (foreignObject CORS), using texture anyway');
+                    console.warn('[StickmanFight] Tainted canvas, using texture anyway');
                 }
 
                 if (!hasPixels) return;
@@ -196,7 +141,7 @@ export default class DOMBlock {
                     const tex = this.scene.textures.get(textureKey);
                     if (tex && tex.getSourceImage() instanceof HTMLCanvasElement) {
                         const texCanvas = tex.getSourceImage();
-                        const texCtx = texCanvas.getContext('2d');
+                        const texCtx = texCanvas.getContext('2d', { willReadFrequently: true });
                         texCtx.clearRect(0, 0, texCanvas.width, texCanvas.height);
                         texCtx.drawImage(canvas, 0, 0, canvas.width, canvas.height, 0, 0, texCanvas.width, texCanvas.height);
                         tex.update();
@@ -204,8 +149,10 @@ export default class DOMBlock {
                 }
             }
         }).catch(err => {
-            this.domElement.classList.remove('stickman-html2canvas-target');
-            console.error('[StickmanFight] Texture capture error:', err);
+            // If html-to-image fails, at least hide the element so the player can interact
+            this.domElement.style.opacity = '0';
+            this.domElement.style.pointerEvents = 'none';
+            console.error('[StickmanFight] html-to-image capture error:', err);
         });
     }
 

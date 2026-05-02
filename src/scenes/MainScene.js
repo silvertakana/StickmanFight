@@ -10,8 +10,8 @@ export default class MainScene extends Phaser.Scene {
 
     preload() {
         // Load Stickman sprites (V0.1 Thick)
-        this.load.spritesheet('stickman-run', 'assets/sprites/StickmanPack/Run/Run.png?v=5', { frameWidth: 64, frameHeight: 64 });
-        this.load.spritesheet('stickman-idle', 'assets/sprites/StickmanPack/Idle/Thin.png?v=5', { frameWidth: 64, frameHeight: 64 });
+        this.load.spritesheet('stickman-run', 'assets/sprites/stickman/StickmanPack/Run/thickRunSheet.png?v=7', { frameWidth: 64, frameHeight: 64 });
+        this.load.spritesheet('stickman-idle', 'assets/sprites/stickman/StickmanPack/Idle/thickIdleSheet.png?v=7', { frameWidth: 64, frameHeight: 64 });
         
         // Load Thickened Jump frames (from V0.2)
         this.load.image('stickman-jump-up', 'assets/sprites/stickman/StickmanPack/Jump/JumpUp.png?v=5');
@@ -520,7 +520,7 @@ export default class MainScene extends Phaser.Scene {
                         if (dynamicBody.label === 'google-ui' && !dynamicBody.isStatic) {
                             const speed = Math.hypot(dynamicBody.velocity.x, dynamicBody.velocity.y);
                             if (speed > 8) {
-                                this.boss.takeHit(25);
+                                // this.boss.takeHit(25);
                                 this.soundImpactHeavy.play();
                             }
                         }

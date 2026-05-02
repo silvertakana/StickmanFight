@@ -16,32 +16,26 @@
   },
   "content_scripts": [
     {
+      "js": [
+        "assets/content.js-loader-Cso4FM8t.js"
+      ],
       "matches": [
         "<all_urls>"
-      ],
-      "js": [
-        "src/content.js-loader.js"
       ],
       "run_at": "document_idle"
     }
   ],
   "web_accessible_resources": [
     {
+      "matches": [
+        "<all_urls>"
+      ],
       "resources": [
         "assets/*",
-        "src/*"
-      ],
-      "matches": [
-        "<all_urls>"
-      ]
-    },
-    {
-      "matches": [
-        "<all_urls>"
-      ],
-      "resources": [
-        "**/*",
-        "*"
+        "src/*",
+        "assets/chunk-CTC_7jcf.js",
+        "assets/Boss-Dhnj297Q.js",
+        "assets/content.js-B8tgvqYS.js"
       ],
       "use_dynamic_url": false
     }

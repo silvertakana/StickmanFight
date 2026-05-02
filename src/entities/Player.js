@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import Projectile from './Projectile.js';
 
 export default class Player {
     constructor(scene, x, y) {
@@ -65,23 +66,22 @@ export default class Player {
         scene.matter.body.setInertia(this.body, Infinity);
 
         // --- Ground detection via sensor collisions ---
-        this.groundContactCount = 0; // Track number of active ground contacts
+        this.isTouchingGround = false; // Track active ground contact
 
-        scene.matter.world.on('collisionstart', (event) => {
-            for (const pair of event.pairs) {
-                if (this._isSensorPair(pair)) {
-                    this.groundContactCount++;
-                }
-            }
+        scene.matter.world.on('beforeupdate', () => {
+            this.isTouchingGround = false;
         });
 
-        scene.matter.world.on('collisionend', (event) => {
+        const handleCollisions = (event) => {
             for (const pair of event.pairs) {
                 if (this._isSensorPair(pair)) {
-                    this.groundContactCount = Math.max(0, this.groundContactCount - 1);
+                    this.isTouchingGround = true;
                 }
             }
-        });
+        };
+
+        scene.matter.world.on('collisionstart', handleCollisions);
+        scene.matter.world.on('collisionactive', handleCollisions);
 
         // --- Input ---
         this.keys = scene.input.keyboard.addKeys('W,A,S,D,SPACE');
@@ -90,6 +90,9 @@ export default class Player {
         this.virtualLeft = false;
         this.virtualRight = false;
         this.virtualJump = false;
+
+        this.lastShootDirection = 1;
+        this.lastShootTime = 0;
     }
 
     _determinePlayerColor() {
@@ -134,7 +137,7 @@ export default class Player {
     }
 
     get isGrounded() {
-        return this.groundContactCount > 0;
+        return this.isTouchingGround;
     }
 
     update() {
@@ -160,6 +163,16 @@ export default class Player {
         if ((this.keys.W.isDown || this.virtualJump) && this.isGrounded) {
             this.gameObject.setVelocityY(this.JUMP_VELOCITY);
             this.scene.soundClick.play(); // Use click sound for jump
+        }
+
+        // --- Shoot ---
+        if (Phaser.Input.Keyboard.JustDown(this.keys.SPACE)) {
+            // "depending on the previous shoot position" - alternating the shoot direction
+            this.lastShootDirection = this.lastShootDirection === 1 ? -1 : 1;
+            
+            const targetX = this.gameObject.x + (this.lastShootDirection * 100);
+            new Projectile(this.scene, this.gameObject.x, this.gameObject.y, targetX, this.gameObject.y);
+            this.scene.soundImpactLight.play(); // Play a sound for shooting
         }
 
         // --- Animations ---

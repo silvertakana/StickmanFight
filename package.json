@@ -25,7 +25,7 @@
   },
   "homepage": "https://github.com/silvertakana/StickmanFight#readme",
   "dependencies": {
-    "html2canvas": "^1.4.1",
+    "html-to-image": "^1.11.13",
     "phaser": "^4.1.0",
     "poly-decomp": "^0.3.0"
   },
