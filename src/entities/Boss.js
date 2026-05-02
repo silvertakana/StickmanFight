@@ -1,3 +1,4 @@
+import Phaser from 'phaser';
 import Projectile from './Projectile.js';
 
 export default class Boss {
@@ -12,7 +13,7 @@ export default class Boss {
         // Visual setup (scaled up red stickman)
         this.sprite = scene.add.sprite(x, y, 'stickman-idle');
         this.sprite.setScale(1.5);
-        this.sprite.setTintFill(0xff0000); // Red boss
+        this.sprite.setTint(0xff0000).setTintMode(Phaser.TintModes.FILL); // Red boss
 
         // Physics setup
         this.gameObject = scene.matter.add.gameObject(this.sprite, {
@@ -33,9 +34,9 @@ export default class Boss {
     takeHit(damage) {
         this.health -= damage;
         // Flash white when hit
-        this.sprite.setTintFill(0xffffff);
+        this.sprite.setTint(0xffffff).setTintMode(Phaser.TintModes.FILL);
         this.scene.time.delayedCall(100, () => {
-            if (this.health > 0) this.sprite.setTintFill(0xff0000);
+            if (this.health > 0) this.sprite.setTint(0xff0000).setTintMode(Phaser.TintModes.FILL);
         });
 
         if (this.health <= 0) {
@@ -45,7 +46,7 @@ export default class Boss {
 
     die() {
         // Simple death: drop to ground and turn grey
-        this.sprite.setTintFill(0x555555);
+        this.sprite.setTint(0x555555).setTintMode(Phaser.TintModes.FILL);
         this.gameObject.setIgnoreGravity(false);
         this.gameObject.body.label = 'deadBoss'; // stop attacking
     }

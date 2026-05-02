@@ -1,3 +1,5 @@
+import Phaser from 'phaser';
+
 export default class Projectile {
     constructor(scene, x, y, targetX, targetY) {
         this.scene = scene;

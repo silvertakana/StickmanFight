@@ -1,3 +1,5 @@
+import Phaser from 'phaser';
+
 export default class Player {
     constructor(scene, x, y) {
         this.scene = scene;
@@ -6,18 +8,19 @@ export default class Player {
         this.MOVE_SPEED = 4;          // Max horizontal speed (px/step)
         this.JUMP_VELOCITY = -9;      // Instant upward impulse
         this.AIR_CONTROL = 1;         // Full air control (1 = same speed as ground)
+        this.ANIM_SPEED_MULT = 1.5;   // Multiplier to match animation frame speed to movement
 
         // --- Compound body: main body + ground sensor ---
         const Bodies = scene.matter.bodies;
 
         // Main collision body (slightly narrower, chamfered to avoid catching edges)
-        const mainBody = Bodies.rectangle(0, 0, 18, 56, {
+        const mainBody = Bodies.rectangle(0, 0, 22, 70, {
             chamfer: { radius: 6 },
             label: 'playerBody'
         });
 
         // Small sensor at the bottom to detect ground contact
-        const groundSensor = Bodies.rectangle(0, 30, 14, 6, {
+        const groundSensor = Bodies.rectangle(0, 38, 18, 6, {
             isSensor: true,
             label: 'groundSensor'
         });
@@ -41,8 +44,8 @@ export default class Player {
 
         // Create the visual sprite and attach the compound body
         this.sprite = scene.add.sprite(x, y, 'stickman-idle');
-        this.sprite.setScale(0.8); // Adjust scale to match physics body
-        this.sprite.setTintFill(0xffffff); // Make the stickman completely white
+        this.sprite.setScale(1.0); // Adjust scale to match physics body
+        this.sprite.setTint(0xffffff).setTintMode(Phaser.TintModes.FILL); // Make the stickman completely white
         this.gameObject = scene.matter.add.gameObject(this.sprite);
         this.gameObject.setExistingBody(compoundBody);
         
@@ -134,10 +137,12 @@ export default class Player {
             if (this.sprite.anims.currentAnim?.key !== 'run') {
                 this.sprite.play('run');
             }
+            this.sprite.anims.timeScale = Math.max(0.1, Math.abs(velocity.x) / this.MOVE_SPEED) * this.ANIM_SPEED_MULT;
         } else {
             if (this.sprite.anims.currentAnim?.key !== 'idle') {
                 this.sprite.play('idle');
             }
+            this.sprite.anims.timeScale = 1;
         }
     }
 }
