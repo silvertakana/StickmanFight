@@ -78,6 +78,19 @@ export default class OverlayScene extends Phaser.Scene {
         this.domScanner = new DOMScanner(this);
         this.domScanner.scan();
 
+        this.events.on('shutdown', () => {
+            // Restore all hidden DOM elements
+            if (this.domScanner) {
+                for (const block of this.domScanner.blocks) {
+                    if (block.domElement) {
+                        block.domElement.style.opacity = '';
+                        block.domElement.style.pointerEvents = '';
+                    }
+                }
+                this.domScanner.clear();
+            }
+        });
+
         // Collision handling for DOM blocks
         this.matter.world.on('collisionstart', (event) => {
             event.pairs.forEach(pair => {

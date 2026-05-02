@@ -22,8 +22,14 @@ export default class DOMScanner {
 
         const allElements = document.querySelectorAll('*');
         const rects = []; // Track placed rects to avoid heavy overlaps
+        const MAX_BLOCKS = 80; // Prevent lag on element-heavy pages
 
         for (const el of allElements) {
+            if (this.blocks.length >= MAX_BLOCKS) {
+                console.log(`[StickmanFight] Hit max block limit (${MAX_BLOCKS}), stopping scan`);
+                break;
+            }
+
             // Skip our own game container
             if (hostEl && hostEl.contains(el)) continue;
 

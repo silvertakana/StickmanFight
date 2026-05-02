@@ -33,6 +33,30 @@ export function startGame() {
     container.style.cssText = 'width: 100%; height: 100%;';
     shadow.appendChild(container);
 
+    // Inside shadow DOM, add a small indicator badge
+    const badge = document.createElement('div');
+    badge.id = 'stickman-badge';
+    badge.textContent = '⚔️ Stickman Fight — Alt+Shift+S to exit';
+    badge.style.cssText = `
+        position: fixed;
+        top: 8px;
+        right: 8px;
+        padding: 6px 12px;
+        background: rgba(0, 0, 0, 0.7);
+        color: #e8eaed;
+        font-family: 'Segoe UI', sans-serif;
+        font-size: 12px;
+        border-radius: 6px;
+        z-index: 2147483647;
+        pointer-events: none;
+        opacity: 0.8;
+        transition: opacity 2s;
+    `;
+    shadow.appendChild(badge);
+
+    // Fade out after 3 seconds
+    setTimeout(() => { badge.style.opacity = '0'; }, 3000);
+
     // Lock page scroll
     document.body.dataset.stickmanPrevOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';

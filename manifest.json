@@ -28,6 +28,17 @@
       "matches": ["<all_urls>"]
     }
   ],
+  "commands": {
+    "toggle-game": {
+        "suggested_key": {
+            "default": "Alt+Shift+S"
+        },
+        "description": "Toggle Stickman Fight"
+    }
+  },
+  "background": {
+    "service_worker": "src/background.js"
+  },
   "icons": {
     "16": "public/icons/icon16.png",
     "48": "public/icons/icon48.png",

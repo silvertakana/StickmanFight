@@ -51,6 +51,14 @@ export function shouldInclude(el) {
         return { valid: false, rect: null };
     }
 
+    // Fixed/sticky elements (navbars, cookie banners) are problematic
+    // because they float above the page. Include them but flag them.
+    const position = style.position;
+    if (position === 'fixed' || position === 'sticky') {
+        // Still include — they make great platforms at the top/bottom of the viewport
+        return { valid: true, rect, isFixed: true };
+    }
+
     // Good tags pass automatically
     if (GOOD_TAGS.has(tag)) return { valid: true, rect };
 
