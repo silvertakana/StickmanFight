@@ -2,6 +2,7 @@
 import Phaser from 'phaser';
 import Player from '../entities/Player.js';
 import { resolveAssetPath } from '../game/assetLoader.js';
+import DOMScanner from '../scanner/DOMScanner.js';
 
 export default class OverlayScene extends Phaser.Scene {
     constructor() {
@@ -66,6 +67,47 @@ export default class OverlayScene extends Phaser.Scene {
 
         // Spawn player at bottom-left
         this.player = new Player(this, 100, height - 100);
+
+        // Scan the DOM and create invisible physics bodies
+        this.domScanner = new DOMScanner(this);
+        this.domScanner.scan();
+
+        // Collision handling for DOM blocks
+        this.matter.world.on('collisionstart', (event) => {
+            event.pairs.forEach(pair => {
+                const { bodyA, bodyB, collision } = pair;
+                const parentA = bodyA.parent || bodyA;
+                const parentB = bodyB.parent || bodyB;
+
+                const checkHit = (staticBody, dynamicBody) => {
+                    if (staticBody.label === 'dom-block' && staticBody.isStatic && !dynamicBody.isStatic) {
+                        const speed = Math.hypot(dynamicBody.velocity.x, dynamicBody.velocity.y);
+                        if (speed > 6 || collision.depth > 3) {
+                            if (staticBody.gameObjectClass) {
+                                staticBody.gameObjectClass.takeHit();
+                            }
+                        }
+                    }
+                };
+
+                checkHit(parentA, parentB);
+                checkHit(parentB, parentA);
+            });
+        });
+
+        // Click-to-detach DOM blocks (Boss player mechanic)
+        this.input.on('pointerdown', (pointer) => {
+            const bodies = this.matter.world.engine.world.bodies;
+            const worldPoint = { x: pointer.worldX, y: pointer.worldY };
+            const clicked = this.matter.query.point(bodies, worldPoint);
+
+            for (const body of clicked) {
+                if (body.label === 'dom-block' && body.isStatic && body.gameObjectClass) {
+                    body.gameObjectClass.fallOut();
+                    break;
+                }
+            }
+        });
 
         // Mouse spring for dragging DOM blocks (Phase 3+)
         this.matter.add.mouseSpring({
